@@ -4,13 +4,38 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-vet"
-version = "0.1.0"
-description = "Static security scanner for MCP (Model Context Protocol) servers"
+version = "0.2.0"
+description = "Static security scanner for MCP (Model Context Protocol) servers. Zero dependencies."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-keywords = ["mcp", "llm-security", "ai-security", "prompt-injection", "tool-poisoning", "sast"]
+authors = [{ name = "sonuoffsec" }]
+keywords = ["mcp", "model-context-protocol", "llm-security", "ai-security", "prompt-injection",
+            "tool-poisoning", "sast", "security", "linter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/sonuoffsec/mcp-vet"
+Source = "https://github.com/sonuoffsec/mcp-vet"
+Issues = "https://github.com/sonuoffsec/mcp-vet/issues"
+Changelog = "https://github.com/sonuoffsec/mcp-vet/blob/main/CHANGELOG.md"
 
 [project.scripts]
 mcp-vet = "mcp_vet.cli:main"

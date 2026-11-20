@@ -100,5 +100,43 @@ def main() -> None:
     print(f"wrote {OUT} ({width}x{height}, {len(rows)} lines)")
 
 
+def find_browser():
+    """A Chromium-based browser for rasterizing, or None."""
+    import shutil
+    candidates = [os.environ.get("BROWSER", "")]
+    for name in ("msedge", "chrome", "google-chrome", "chromium", "chromium-browser"):
+        candidates.append(shutil.which(name) or "")
+    candidates += [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ]
+    return next((c for c in candidates if c and os.path.exists(c)), None)
+
+
+def rasterize() -> None:
+    """Render banner.svg and terminal.svg to 2x PNGs (PyPI cannot show SVG images)."""
+    browser = find_browser()
+    if not browser:
+        sys.exit("no Chromium-based browser found; set BROWSER to its path")
+    sizes = {"banner": (1200, 300), "terminal": None}
+    with open(OUT, encoding="utf-8") as fh:
+        head = fh.read(400)
+    import re
+    m = re.search(r'viewBox="0 0 (\d+) (\d+)"', head)
+    sizes["terminal"] = (int(m.group(1)), int(m.group(2)))
+    for name, (w, h) in sizes.items():
+        svg = os.path.join(ROOT, "assets", f"{name}.svg")
+        png = os.path.join(ROOT, "assets", f"{name}.png")
+        subprocess.run([browser, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+                        "--force-device-scale-factor=2", f"--screenshot={png}",
+                        f"--window-size={w},{h}", "file:///" + svg.replace(os.sep, "/")],
+                       check=True, capture_output=True)
+        print(f"wrote {png}")
+
+
 if __name__ == "__main__":
     main()
+    if "--png" in sys.argv:
+        rasterize()

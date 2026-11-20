@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests (includes the recall suite)
+        run: python -m unittest discover -s tests -v
+      - name: Print recall table
+        run: python tests/test_recall.py
+      - name: The scanner must find nothing in its own source
+        env:
+          PYTHONPATH: src
+        run: python -m mcp_vet src
+
+  package:
+    name: Build and check the package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Install the wheel and run it
+        run: |
+          python -m pip install dist/*.whl
+          mcp-vet --version
+          mcp-vet examples/safe-server
+      - name: The vulnerable example must still fail the gate
+        run: |
+          if mcp-vet examples/vulnerable-server --fail-on HIGH > /dev/null; then
+            echo "vulnerable example passed the gate, which means detection broke" >&2
+            exit 1
+          fi
+
+  terminal-image:
+    name: README terminal image matches real output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python assets/build_terminal_svg.py
+      - name: Fail if assets/terminal.svg is stale
+        run: git diff --exit-code assets/terminal.svg

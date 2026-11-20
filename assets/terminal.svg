@@ -7,7 +7,7 @@
 <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14">
 <text x="28.0" y="52" fill="#3FB950" font-weight="700">$</text>
 <text x="44.9" y="52" fill="#C9D1D9">mcp-vet examples/vulnerable-server</text>
-<text x="28.0" y="73" fill="#8B949E">mcp-vet 0.1.0 - scanned 4 files in examples/vulnerable-server</text>
+<text x="28.0" y="73" fill="#8B949E">mcp-vet 0.2.0 - scanned 4 files in examples/vulnerable-server</text>
 <text x="28.0" y="115" fill="#79C0FF">mcp-config.json</text>
 <text x="44.9" y="136" fill="#FF8E72" font-weight="700">HIGH</text>
 <text x="120.7" y="136" fill="#C9D1D9" font-weight="700">MCP007</text>

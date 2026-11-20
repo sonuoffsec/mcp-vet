@@ -7,16 +7,17 @@ from typing import List, Optional
 
 from dataclasses import replace
 
-from . import checks, pyast, unicode_check
+from . import checks, jsflow, pyast, unicode_check
 from .models import Finding, ScanResult, SEVERITIES, severity_rank
 from .rules import RULES, PROSE_EXTS, CODE_EXTS
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
              ".tox", ".mypy_cache", ".pytest_cache", "site-packages"}
-SCAN_EXTS = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".yaml", ".yml",
+SCAN_EXTS = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".mts", ".cts", ".json", ".yaml", ".yml",
              ".toml", ".md", ".txt", ".env"}
 MAX_BYTES = 1_000_000
 MAX_UNICODE_PER_FILE = 3
+JS_EXTS = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".mts", ".cts"}
 AWS_DOC_KEY = "AKIAIOSFODNN7" + "EXAMPLE"  # the key AWS publishes in its documentation
 DECLARATION = re.compile(r"(\bexec(Sync)?\s*\(\s*\w+\??\s*:\s*[A-Za-z\[{]|\bexec(Sync)?\s*\(\s*\)\s*[:{])")
 EXEC_ONLY = re.compile(r"(?<![\w.$])exec(Sync)?\s*\(")
@@ -27,6 +28,8 @@ DEMOTE_RULES = {"MCP001", "MCP002", "MCP004", "MCP005", "MCP009"}
 COMMENT_RE = re.compile(r"\s*(//|/\*|\*|#)")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "e2e", "fixtures", "fixture",
              "__fixtures__", "testdata", "__mocks__", "mocks"}
+# Type declarations and minified bundles never hold the server's own logic.
+GENERATED_RE = re.compile(r"(\.d\.(ts|mts|cts)$|\.min\.(js|mjs|cjs)$)", re.IGNORECASE)
 TEST_FILE_RE = re.compile(r"(^test_.*\.py$|_test\.py$|\.(test|spec)\.(js|mjs|cjs|ts|tsx)$|^conftest\.py$)")
 IGNORE_RE = re.compile(r"mcp-vet:\s*ignore(?:\s+((?:MCP\d{3}[,\s]*)+))?", re.IGNORECASE)
 
@@ -39,6 +42,8 @@ def _iter_files(root: Path, include_tests: bool = False):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS
                        and (include_tests or d.lower() not in TEST_DIRS)]
         for name in filenames:
+            if GENERATED_RE.search(name):
+                continue
             if not include_tests and TEST_FILE_RE.search(name):
                 continue
             p = Path(dirpath) / name
@@ -116,8 +121,14 @@ def scan_text(rel: str, text: str, name: str, ctx: Optional[ProjectContext] = No
     lines = text.splitlines()
     findings: List[Finding] = []
 
-    # Python gets AST analysis (taint-aware). If parsing fails we fall back to regexes.
-    ast_findings = pyast.analyze(rel, text) if ext == ".py" else None
+    # Python gets AST analysis and JS/TS gets the token-level analyzer (both taint-aware).
+    # If analysis fails we fall back to line patterns.
+    if ext == ".py":
+        ast_findings = pyast.analyze(rel, text)
+    elif ext in JS_EXTS:
+        ast_findings = jsflow.analyze(rel, text)
+    else:
+        ast_findings = None
     skip_rules = {"MCP001"} if ast_findings is not None else set()
     if ast_findings:
         findings.extend(ast_findings)

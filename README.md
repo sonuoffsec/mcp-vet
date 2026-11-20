@@ -1,23 +1,18 @@
-<p align="center">
-  <img src="assets/banner.svg" alt="mcp-vet: vet your MCP servers before your AI trusts them" width="100%">
-</p>
+![mcp-vet: vet your MCP servers before your AI trusts them](https://raw.githubusercontent.com/sonuoffsec/mcp-vet/main/assets/banner.png)
 
-<p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2DD4BF?style=flat-square"></a>
-  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-3B82F6?style=flat-square">
-  <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-0-2DD4BF?style=flat-square">
-  <img alt="SARIF 2.1.0 output" src="https://img.shields.io/badge/output-text%20%7C%20JSON%20%7C%20SARIF-3B82F6?style=flat-square">
-</p>
+[![CI](https://github.com/sonuoffsec/mcp-vet/actions/workflows/ci.yml/badge.svg)](https://github.com/sonuoffsec/mcp-vet/actions/workflows/ci.yml)
+![License: MIT](https://img.shields.io/badge/license-MIT-2DD4BF?style=flat-square)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3B82F6?style=flat-square)
+![Zero dependencies](https://img.shields.io/badge/dependencies-0-2DD4BF?style=flat-square)
+![Output: text, JSON, SARIF](https://img.shields.io/badge/output-text%20%7C%20JSON%20%7C%20SARIF-3B82F6?style=flat-square)
 
-Static security scanner for **MCP (Model Context Protocol) servers**. Point it at a server's source or config and it flags the problems that let an attacker hijack an AI agent.
+Static security scanner for **MCP (Model Context Protocol) servers** written in **Python, JavaScript and TypeScript**. Point it at a server's source or config and it flags the problems that let an attacker hijack an AI agent: tool poisoning, command injection, path traversal, SSRF, SQL injection, unsafe deserialization, leaked secrets and unauthenticated transports.
 
 Zero dependencies. One command. Works in CI.
 
-<p align="center">
-  <img src="assets/terminal.svg" alt="Terminal output of mcp-vet scanning a deliberately vulnerable MCP server: one critical, five high, two medium and three low findings" width="760">
-</p>
+![Terminal output of mcp-vet scanning a deliberately vulnerable MCP server: one critical, five high, two medium and three low findings](https://raw.githubusercontent.com/sonuoffsec/mcp-vet/main/assets/terminal.png)
 
-<sub>The image above is generated from the scanner's real output by <code>assets/build_terminal_svg.py</code>.</sub>
+<sub>The image above is generated from the scanner's real output by `assets/build_terminal_svg.py --png`.</sub>
 
 ## Why
 
@@ -82,7 +77,8 @@ Omit the rule ID to suppress every rule on that line.
 ## How it works
 
 - **Python files are parsed into an AST** and checked with simple taint tracking. Values that come from a tool's parameters are "tainted". Taint follows assignments, and calls to functions named like `validate`, `sanitize`, `safe`, `check`, `allow` or `quote` (for example `shlex.quote`) clear it. A tool that runs a constant command is not flagged.
-- **JS/TS and config files use patterns.** There is no JS parser yet, so JS findings are noisier than Python ones.
+- **JavaScript and TypeScript get their own analyzer**, with no dependencies. A tokenizer (strings, template literals, comments, regex literals) feeds a scope-aware pass that finds tool handlers (`server.tool`, `registerTool`, `setRequestHandler`) and HTTP routes (Express, Fastify), follows tool arguments through assignments and destructuring, and understands `import { a as b }`, `require`, `promisify(exec)`, `execa`, `shelljs` and Zod schemas that constrain an input (`z.enum`, `z.number`, `z.string().uuid()`). It also knows that a ternary's value comes only from its branches, that an equality test yields a boolean, and that `ORDERS[args.sort]` returns a value the caller does not control. It is a purpose-built analyzer, not a full JavaScript parser: a file it cannot tokenize falls back to line patterns, reported at lower confidence.
+- **Config and manifest files** (`package.json`, `requirements.txt`, MCP client config) are checked with direct rules.
 - **HTTP route handlers count as entry points.** Python functions decorated like `@app.post("/mcp/call")` (FastAPI, Flask) are treated like tool handlers, so hand-rolled MCP-over-HTTP servers are analyzed too.
 - **Authentication and path guards are looked for per app**: in the same folder, or any parent folder, that has its own `requirements.txt`, `package.json` or `Dockerfile`. One app's auth does not hide another app's gap.
 - **Allowlist checks count.** A parameter tested with `if x not in ALLOWED: return/raise`, or looked up with `if registry.get(x) is None: raise`, is treated as validated. A filesystem existence check (`os.path.exists`, `isfile`) is not.
@@ -94,16 +90,19 @@ Omit the rule ID to suppress every rule on that line.
 
 All runs were static: the code was cloned and read, never executed.
 
-**Precision on 67 small community MCP servers** (about 29,600 files, Python and TypeScript/JavaScript):
+**Precision on 67 small community MCP servers** (about 29,500 files in Python, JavaScript and TypeScript):
 
-- The first pass reported **715 HIGH or CRITICAL findings**. Almost all were false positives: emoji and Persian/Sinhala text flagged as hidden Unicode, code that *reads* `.env` flagged as tool poisoning, Playwright's `$eval` flagged as `eval`, security libraries that contain the very strings they block.
-- Each cause was fixed and became a regression test. After tuning, **8 HIGH/CRITICAL findings remain, in 5 repos. I reviewed all 8 by hand and none is a vulnerability**: three are blocklists or defensive examples in security libraries, two are attack payloads in test data, one is defensive prompt text telling the model to treat such phrases as data, one is a test credential, and one is a zero-width character in a docstring.
-- The Python path-handling findings (MCP005, MEDIUM) are the most useful tier: **40 findings in 7 repos**. I read four of the first batch in detail (three real, one false positive, now fixed). When I widened coverage to more file operations (`os.remove`, `shutil.copy`, `Path.unlink`...), 19 more appeared; I checked the flagged line and enclosing function of each. 18 were a tool argument deciding where a file is written, copied, listed or deleted (`save_to`, `world_path`, `directory`, `session_id`), and 1 was a false positive (the argument was validated by a registry lookup), now fixed. I did not read every one of the 40 in full. Many of these servers are local developer tools where choosing a path is the point, so "real" here means the rule's condition holds, not that the server is exploitable.
-- The SQL rule first reported 23 findings on one repo, **all false positives** (SQLAlchemy ORM statements, which are not injectable like raw SQL strings). It now only flags SQL built by string formatting, or a query passed in whole by the caller. On these 67 repos it reports nothing for SQL injection or unsafe deserialization.
+- The first pass (v0.1) reported **715 HIGH or CRITICAL findings**. Almost all were false positives: emoji and Persian/Sinhala text flagged as hidden Unicode, code that *reads* `.env` flagged as tool poisoning, Playwright's `$eval` flagged as `eval`, security libraries that contain the very strings they block. Each cause was fixed and became a regression test.
+- Today there are **14 HIGH or CRITICAL findings in 6 repos**. Eight of them I reviewed by hand and **none is a vulnerability**: blocklists and defensive examples in security libraries, attack payloads in test data, defensive prompt text, a test credential, and a zero-width character in a docstring. The other **6 are SQL findings (MCP010) in a single repo** that builds dynamic SQL and escapes identifiers with helper functions. I traced several of that repo's findings to escaped or allowlist-validated code and fixed the analyzer for those patterns, but I did **not** verify these last 6, so treat them as unconfirmed.
+- The file-path findings (MCP005, MEDIUM) are the most useful tier: **40 findings in 8 repos**. I checked 24 of them (the flagged line and its enclosing function): 22 were a tool argument deciding where a file is read, written, copied, listed or deleted (`save_to`, `world_path`, `directory`, `filePath`, `session_id`), and 2 were false positives (validated by a registry lookup; guarded by the caller), both fixed. I did not read all 40. Many of these servers are local developer tools where choosing a path is the point, so "real" means the rule's condition holds, not that the server is exploitable.
+- Two further JavaScript findings I read and confirmed: a tool that reads an arbitrary caller-supplied file path, and a tool that fetches a caller-supplied URL (`faucetUrl: z.string().url()` checks the format only).
+- When the JS/TS analyzer was first enabled it reported **391 JS findings against 102 from the old patterns**. Nearly all of the 337 new ones were false positives: `/regex/.exec()` mistaken for `child_process.exec`, SQL fragments built from a ternary of constants, `ORDERS[args.sort]` allowlist lookups, query-builder helpers that return `?` placeholders, `items.map(() => '?')`, `pg.escapeIdentifier` under another name. Each was fixed and tested, and the JS/TS count is now **74**.
+- The SQL rule first reported 23 findings on one Python repo, **all false positives** (SQLAlchemy ORM statements). It now only flags SQL built by string formatting, or a query passed in whole by the caller.
+- The official `modelcontextprotocol/servers` repo (TypeScript) produces **no findings** other than four unpinned workspace dependencies, and the Python SDK produces two MEDIUM `shell=True` calls in its developer CLI.
 
 **Recall on a deliberately vulnerable server.** DVAP's MCP lab contains an unauthenticated endpoint, an arbitrary file read and two SSRF calls. **The first version of this scanner found none of them.** It only understood the official SDK's decorators, and one app's auth elsewhere in the repo hid the missing auth. After adding route-handler support and per-app scoping, it finds all of them (plus a further SSRF in a second lab). That is one server, so treat it as a sanity check, not a measured recall rate.
 
-**Recall suite.** `tests/recall_cases.py` holds 59 vulnerable snippets (each must trigger its rule) and 35 safe twins (none may produce a MEDIUM or higher finding). It runs with the tests, and `python tests/test_recall.py` prints a per-rule table. A lesson from building it: the first version of the suite scored 37 of 37, which proved little because I wrote the cases knowing how the scanner works. A follow-up probe with 18 harder variants (`os.remove`, `shutil.copy`, `subprocess.run(x.split())`, `pickle.loads`, a tainted value passed through a helper, `__import__('os').system`...) found that **13 of 18 were missed**. Those misses drove the file-operation, command-construction, helper-tracking, SQL and deserialization work, and every variant is now a permanent test case. The suite measures known bug classes and regressions, not unknown ones.
+**Recall suite.** `tests/recall_cases.py` and `tests/recall_cases_js.py` hold 117 vulnerable snippets (each must trigger its rule) and 79 safe twins (none may produce a MEDIUM or higher finding), 62 and 41 of them JavaScript or TypeScript. It runs with the tests, and `python tests/test_recall.py` prints a per-rule table. A lesson from building it: the first version scored 37 of 37, which proved little, because I wrote the cases knowing how the scanner works. A probe with 18 harder Python variants (`os.remove`, `shutil.copy`, `subprocess.run(x.split())`, `pickle.loads`, a tainted value passed through a helper, `__import__('os').system`...) found that **13 of 18 were missed**, and a probe with 21 harder JS variants found 4 misses and 1 false positive. Those drove the file-operation, command-construction, helper-tracking, SQL, deserialization, alias-resolution and Zod work, and every variant is now a permanent test case. The suite measures known bug classes and regressions, not unknown ones.
 
 **What this does not show.** The rules were tuned on this same sample, so the precision above is optimistic. None of the 67 servers was malicious, so I have not measured how well tool-poisoning detection (MCP002) works against real attacks beyond the patterns in the tests.
 
@@ -111,8 +110,8 @@ All runs were static: the code was cloned and read, never executed.
 
 - **Static analysis.** It does not run your server, so runtime-only bugs are missed.
 - **Taint tracking is shallow.** It follows assignments inside a function and one call into a helper defined in the same file. It does not follow data across files, through classes, or two helpers deep. Sanitizer detection is name-based (`validate`, `sanitize`, `safe`, `resolve_`, `quote`...), so a function called `validate_path` that does not validate will be trusted.
-- **Not covered:** XSS, authorization logic, race conditions, prototype pollution, and logic flaws in how a tool uses the model's output. SQL injection and unsafe deserialization are covered for Python only.
-- **No JS/TS parser.** Those checks are line patterns.
+- **Not covered:** XSS, authorization logic, race conditions, prototype pollution, and logic flaws in how a tool uses the model's output. Unsafe deserialization in JS/TS is limited to `node-serialize`.
+- **The JS/TS analyzer is not a full parser.** It will miss taint that flows through classes, `.map` callbacks or dynamic property access, and it can be fooled by unusual code layout. Files over about 600 KB, `.d.ts` files and minified bundles are not analyzed.
 - **MCP004 and MCP005 trust any auth or guard code in the same app.** One unrelated `Authorization` header in the app will silence MCP004, and an existence check such as `os.path.isfile` is correctly *not* treated as a guard, but a badly written custom one named `validate_path` would be.
 - **Recall is measured on one server** (DVAP's MCP lab) and precision on 67 servers that were also used to tune the rules. Expect different results on code that looks unlike these.
 - A clean report is not a security guarantee.
@@ -122,7 +121,7 @@ All runs were static: the code was cloned and read, never executed.
 ```bash
 python -m unittest discover -s tests
 python -m mcp_vet src    # the scanner scans itself
-python assets/build_terminal_svg.py    # regenerate the terminal image above
+python assets/build_terminal_svg.py --png    # regenerate the terminal image above (needs Edge or Chrome)
 ```
 
 The `examples/` folder holds a deliberately vulnerable server and a clean one. Never deploy the vulnerable one.

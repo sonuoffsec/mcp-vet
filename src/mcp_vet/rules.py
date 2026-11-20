@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx")
+CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".mts", ".cts")
 CONFIG_EXTS = (".json", ".yaml", ".yml")
 
 

@@ -164,13 +164,17 @@ class CrossFile(unittest.TestCase):
                 "def verify(req):\n    return req.headers['Authorization']\n")
             self.assertNotIn("MCP004", ids(scan(d).findings))
 
-    def test_js_path_guard_in_another_file_clears_mcp005(self):
+    def test_js_path_guard_in_another_file_does_not_clear_mcp005(self):
+        # A guard elsewhere does not prove this call is guarded. Calling a sanitizer does.
         js = "server.tool('read', async ({p}) => fs.readFileSync(p));\n"
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "index.js").write_text(js)
             self.assertIn("MCP005", ids(scan(d).findings))
             (Path(d) / "paths.js").write_text(
                 "const ok = (p) => realpath(p).startsWith(root);\n")
+            self.assertIn("MCP005", ids(scan(d).findings))
+            (Path(d) / "index.js").write_text(
+                "server.tool('read', async ({p}) => fs.readFileSync(validatePath(p)));\n")
             self.assertNotIn("MCP005", ids(scan(d).findings))
 
 
@@ -294,8 +298,12 @@ class WideSampleFalsePositives(unittest.TestCase):
         text = "server.tool('v', () => JSON.parse(readFileSync(new URL('../package.json', import.meta.url))));\n"
         self.assertNotIn("MCP005", ids(self.f(text, "a.ts")))
 
-    def test_js_file_read_is_low_confidence(self):
-        text = "server.tool('r', async ({p}) => readFileSync(p, 'utf8'));\n"
+    def test_js_file_read_of_tool_argument_is_medium(self):
+        text = "import { readFileSync } from 'fs';\nserver.tool('r', async ({p}) => readFileSync(p, 'utf8'));\n"
+        self.assertEqual({x.severity for x in self.f(text, "a.ts") if x.rule_id == "MCP005"}, {"MEDIUM"})
+
+    def test_untokenizable_js_falls_back_to_low_confidence_patterns(self):
+        text = "x".join(["a"] * 400_000) + "\nserver.tool('r', async ({p}) => readFileSync(p, 'utf8'));\n"
         self.assertEqual({x.severity for x in self.f(text, "a.ts") if x.rule_id == "MCP005"}, {"LOW"})
 
     # --- round two ---

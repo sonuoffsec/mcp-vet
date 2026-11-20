@@ -20,6 +20,7 @@ URL_GUARDS = {"urlparse", "hostname", "netloc", "ipaddress", "is_private", "is_l
 SANITIZER = re.compile(r"(valid|sanit|safe|allow|normali[sz]e|secure|check|quote|resolve_|confine|within|inside|contain|jail|sandbox)", re.I)
 SUBPROC = {"run", "call", "check_call", "check_output", "Popen"}
 SUBPROC_SHELL_ALWAYS = {"getoutput", "getstatusoutput"}
+SHELL_PROGRAMS = {"sh", "bash", "zsh", "dash", "ksh", "cmd", "powershell", "pwsh"}
 EXEC_FUNCS = {"os.execv", "os.execve", "os.execvp", "os.execvpe", "os.execl", "os.execle",
               "os.execlp", "os.execlpe", "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
               "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe", "os.startfile"}
@@ -82,11 +83,17 @@ def is_constant_expr(node: Optional[ast.AST]) -> bool:
     return all(is_constant_expr(c) for c in ast.iter_child_nodes(node))
 
 
+# Module-level helpers whose return value does not carry their inputs (set per file by analyze()).
+_CLEAN_FUNCS: Set[str] = set()
+
+
 def expr_tainted(node: ast.AST, tainted: Set[str]) -> bool:
     if isinstance(node, ast.Call):
         fname = dotted(node.func).rsplit(".", 1)[-1]
         if fname and SANITIZER.search(fname):
             return False
+        if isinstance(node.func, ast.Name) and node.func.id in _CLEAN_FUNCS:
+            return False  # e.g. a query builder that returns "WHERE a = ?" and a separate params list
     if isinstance(node, ast.Name):
         return node.id in tainted
     return any(expr_tainted(c, tainted) for c in ast.iter_child_nodes(node))
@@ -206,27 +213,30 @@ def _validated_by_lookup(fn) -> Set[str]:
     return out
 
 
-def taint_set(fn) -> Set[str]:
+def taint_set(fn, include_request: bool = True, only: Optional[Set[str]] = None) -> Set[str]:
     a = fn.args
     params = [x.arg for x in a.posonlyargs + a.args + a.kwonlyargs]
     if a.vararg:
         params.append(a.vararg.arg)
     if a.kwarg:
         params.append(a.kwarg.arg)
+    if only is not None:  # helper summaries: make just this parameter hostile
+        params = [p for p in params if p in only]
     # Flask and Quart expose the incoming request as a module-level global, not a parameter.
-    tainted = ({p for p in params if p not in SKIP_PARAMS} | {"request"}) - validated_names(fn)
+    val = validated_names(fn)  # checked against an allowlist: never tainted, even when derived
+    tainted = ({p for p in params if p not in SKIP_PARAMS} | ({"request"} if include_request else set())) - val
     for _ in range(3):  # propagate through assignments
         for n in ast.walk(fn):
             if isinstance(n, ast.Assign) and expr_tainted(n.value, tainted):
                 for t in n.targets:
-                    tainted |= _targets(t)
+                    tainted |= _targets(t) - val
             elif isinstance(n, (ast.AugAssign, ast.AnnAssign)) and n.value is not None \
                     and expr_tainted(n.value, tainted):
-                tainted |= _targets(n.target)
+                tainted |= _targets(n.target) - val
             elif isinstance(n, ast.NamedExpr) and expr_tainted(n.value, tainted):
-                tainted |= _targets(n.target)
+                tainted |= _targets(n.target) - val
             elif isinstance(n, (ast.For, ast.AsyncFor)) and expr_tainted(n.iter, tainted):
-                tainted |= _targets(n.target)
+                tainted |= _targets(n.target) - val
     return tainted
 
 
@@ -260,7 +270,8 @@ def _http_clients(tree: ast.AST) -> Set[str]:
     return out
 
 
-Summaries = Dict[str, List[Tuple[str, str]]]
+# helper name -> (positional parameter names, {parameter name -> findings if it is hostile})
+Summaries = Dict[str, Tuple[List[str], Dict[str, List[Tuple[str, str]]]]]
 
 
 class _Visitor(ast.NodeVisitor):
@@ -314,7 +325,9 @@ class _Visitor(ast.NodeVisitor):
         if (shell_call or dynamic) and not is_constant_expr(first):
             if expr_tainted(first, tainted):
                 self._add("MCP001", node, "HIGH", "A tool argument reaches this call.")
-            else:
+            elif not (in_tool and any(isinstance(n, ast.Name) and n.id in params and n.id not in tainted
+                                      for n in ast.walk(first))):
+                # (skipped when the only inputs used were validated against an allowlist)
                 self._add("MCP001", node, "MEDIUM", "The argument is not a constant.")
         elif name.startswith("subprocess.") and last in SUBPROC and first is not None and \
                 self._program_from_input(first, tainted):
@@ -362,9 +375,21 @@ class _Visitor(ast.NodeVisitor):
                 self._add("MCP011", node, "HIGH", "A tool argument is deserialized.")
 
         # ---- one hop into helper functions defined in this file ---------------------
-        if in_tool and isinstance(node.func, ast.Name) and node.func.id in self.summaries \
-                and (any_arg_tainted or any(expr_tainted(k.value, tainted) for k in node.keywords)):
-            for rule_id, severity in self.summaries[node.func.id]:
+        if in_tool and isinstance(node.func, ast.Name) and node.func.id in self.summaries:
+            pnames, per_param = self.summaries[node.func.id]
+            hostile = set()  # the helper's parameters that receive a tainted argument here
+            for k, arg in enumerate(node.args):
+                if isinstance(arg, ast.Starred):
+                    hostile |= set(pnames[k:])
+                elif expr_tainted(arg, tainted) and not is_constant_expr(arg):
+                    hostile.add(pnames[k] if k < len(pnames) else "*")
+            for kw in node.keywords:
+                if kw.arg is None or (expr_tainted(kw.value, tainted) and not is_constant_expr(kw.value)):
+                    hostile.add(kw.arg or "**")
+            entries = []
+            for p in hostile:
+                entries += per_param.get(p, []) or (per_param.get("*", []) if p in ("*", "**") else [])
+            for rule_id, severity in dict.fromkeys(entries):
                 if (rule_id == "MCP005" and guard_path) or (rule_id == "MCP009" and guard_url):
                     continue  # the calling tool already checks the value
                 self._add(rule_id, node, severity, f"Reached through helper `{node.func.id}`.")
@@ -374,7 +399,18 @@ class _Visitor(ast.NodeVisitor):
     @staticmethod
     def _program_from_input(first: ast.AST, tainted: Set[str]) -> bool:
         if isinstance(first, (ast.List, ast.Tuple)):
-            return bool(first.elts) and expr_tainted(first.elts[0], tainted)
+            if not first.elts:
+                return False
+            head = first.elts[0]
+            if expr_tainted(head, tainted):
+                return True
+            # ["sh", "-c", user_text]: the program is fixed but it is a shell
+            if isinstance(head, ast.Constant) and isinstance(head.value, str):
+                program = head.value.replace("\\", "/").rsplit("/", 1)[-1].lower()
+                if program.endswith(".exe"):
+                    program = program[:-4]
+                return program in SHELL_PROGRAMS and any(expr_tainted(e, tainted) for e in first.elts[1:])
+            return False
         if isinstance(first, ast.Call):  # subprocess.run(x.split()) / shlex.split(x)
             if (isinstance(first.func, ast.Attribute) and first.func.attr == "split") \
                     or dotted(first.func) == "shlex.split":
@@ -388,18 +424,30 @@ class _Visitor(ast.NodeVisitor):
 
 
 def _summarize_helpers(tree: ast.Module, rel: str, lines: List[str], clients: Set[str]) -> Summaries:
-    """For each plain function in the file, what would happen if every parameter were hostile?"""
+    """For each plain function in the file: what happens if one parameter at a time is hostile?"""
     out: Summaries = {}
     for fn in tree.body:
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and not is_tool_func(fn):
-            sub = _Visitor(rel, lines, clients)
-            t = taint_set(fn)
-            sub.stack.append((t, True, _has_guard(fn, GUARD_ATTRS), _has_guard(fn, URL_GUARDS),
-                              raw_params(fn), sql_built_names(fn, t)))
-            for stmt in fn.body:
-                sub.visit(stmt)
-            if sub.findings:
-                out[fn.name] = [(f.rule_id, f.severity) for f in sub.findings]
+            a = fn.args
+            positional = [x.arg for x in a.posonlyargs + a.args]
+            names = positional + [x.arg for x in a.kwonlyargs] + \
+                ([a.vararg.arg] if a.vararg else []) + ([a.kwarg.arg] if a.kwarg else [])
+            per_param: Dict[str, List[Tuple[str, str]]] = {}
+            for p in names:
+                if p in SKIP_PARAMS:
+                    continue
+                sub = _Visitor(rel, lines, clients)
+                t = taint_set(fn, include_request=False, only={p})
+                sub.stack.append((t, True, _has_guard(fn, GUARD_ATTRS), _has_guard(fn, URL_GUARDS),
+                                  raw_params(fn) & {p}, sql_built_names(fn, t)))
+                for stmt in fn.body:
+                    sub.visit(stmt)
+                if sub.findings:
+                    per_param[p] = [(f.rule_id, f.severity) for f in sub.findings]
+            if a.vararg and a.vararg.arg in per_param:
+                per_param["*"] = per_param[a.vararg.arg]
+            if per_param:
+                out[fn.name] = (positional, per_param)
     return out
 
 
@@ -411,6 +459,21 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
         return None
     lines = text.splitlines()
     clients = _http_clients(tree)
-    v = _Visitor(rel, lines, clients, _summarize_helpers(tree, rel, lines, clients))
-    v.visit(tree)
-    return v.findings
+    global _CLEAN_FUNCS
+    _CLEAN_FUNCS = set()
+    _CLEAN_FUNCS = {fn.name for fn in tree.body
+                    if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and not is_tool_func(fn) and not _returns_tainted(fn)}
+    try:
+        v = _Visitor(rel, lines, clients, _summarize_helpers(tree, rel, lines, clients))
+        v.visit(tree)
+        return v.findings
+    finally:
+        _CLEAN_FUNCS = set()
+
+
+def _returns_tainted(fn) -> bool:
+    """Would the function's return value carry its inputs, if every parameter were hostile?"""
+    tainted = taint_set(fn, include_request=False)
+    return any(isinstance(n, ast.Return) and n.value is not None and expr_tainted(n.value, tainted)
+               for n in ast.walk(fn))

@@ -70,6 +70,7 @@ VULNERABLE = [
     # ---- indirect command construction --------------------------------------------------
     ("subprocess-split-input", "a.py", PY + "import subprocess\n@mcp.tool()\ndef run(cmd: str):\n    return subprocess.run(cmd.split(), capture_output=True)\n", ["MCP001"]),
     ("subprocess-shlex-split", "a.py", PY + "import subprocess, shlex\n@mcp.tool()\ndef run(cmd: str):\n    return subprocess.run(shlex.split(cmd))\n", ["MCP001"]),
+    ("subprocess-sh-dash-c", "a.py", PY + "import subprocess\n@mcp.tool()\ndef run(cmd: str):\n    return subprocess.run(['sh', '-c', cmd], capture_output=True)\n", ["MCP001"]),
     ("os-execvp", "a.py", PY + "import os\n@mcp.tool()\ndef run(prog: str):\n    os.execvp(prog, [prog])\n", ["MCP001"]),
     ("dunder-import-system", "a.py", PY + "@mcp.tool()\ndef run(cmd: str):\n    __import__('os').system(cmd)\n", ["MCP001"]),
     ("dict-argument-key", "a.py", PY + "import os\n@mcp.tool()\ndef run(args: dict):\n    os.system(args['cmd'])\n", ["MCP001"]),
@@ -83,6 +84,8 @@ VULNERABLE = [
     ("pickle-loads", "a.py", PY + "import pickle\n@mcp.tool()\ndef load(blob: bytes):\n    return pickle.loads(blob)\n", ["MCP011"]),
     ("yaml-load-default", "a.py", PY + "import yaml\n@mcp.tool()\ndef parse(text: str):\n    return yaml.load(text)\n", ["MCP011"]),
     ("yaml-full-loader", "a.py", PY + "import yaml\n@mcp.tool()\ndef parse(text: str):\n    return yaml.load(text, Loader=yaml.FullLoader)\n", ["MCP011"]),
+    ("helper-url-parameter-is-tainted", "a.py", PY + "import requests\ndef _call(path, body):\n    return requests.post('https://api.example.org' + path, json=body)\n@mcp.tool()\ndef go(q: str):\n    return _call(q, {})\n", ["MCP009"]),
+    ("sql-helper-interpolates-input", "a.py", PY + "def _where(q):\n    return \"name = '%s'\" % q\n@mcp.tool()\ndef find(q: str):\n    w = _where(q)\n    return db.execute(f'SELECT * FROM t WHERE {w}').fetchall()\n", ["MCP010"]),
     ("existence-check-is-not-validation", "a.py", PY + "import os\n@mcp.tool()\ndef show(p: str):\n    if not os.path.exists(p):\n        raise ValueError('missing')\n    return open(p).read()\n", ["MCP005"]),
     ("sql-built-in-variable", "a.py", PY + "import sqlite3\n@mcp.tool()\ndef find(name: str):\n    q = \"SELECT * FROM users WHERE name = '%s'\" % name\n    return sqlite3.connect('a.db').execute(q).fetchall()\n", ["MCP010"]),
     ("sql-where-clause-appended", "a.py", PY + "import sqlite3\n@mcp.tool()\ndef find(name: str):\n    q = 'SELECT * FROM users'\n    q += ' WHERE name = ' + name\n    return sqlite3.connect('a.db').execute(q).fetchall()\n", ["MCP010"]),
@@ -117,6 +120,8 @@ SAFE = [
     ("pickle-of-trusted-file", "a.py", PY + "import pickle\n@mcp.tool()\ndef model():\n    with open('model.pkl', 'rb') as f:\n        return pickle.load(f)\n"),
     ("helper-with-constant-args-only", "a.py", PY + "def _load(p):\n    return open(p).read()\n@mcp.tool()\ndef version():\n    return _load('VERSION')\n"),
     ("helper-argument-validated-first", "a.py", PY + "ALLOWED = {'a.txt', 'b.txt'}\ndef _load(p):\n    return open(p).read()\n@mcp.tool()\ndef show(name: str):\n    if name not in ALLOWED:\n        raise ValueError('no')\n    return _load(name)\n"),
+    ("helper-url-parameter-gets-a-constant", "a.py", PY + "import requests\ndef _call(path, body):\n    return requests.post('https://api.example.org' + path, json=body)\n@mcp.tool()\ndef go(q: str):\n    return _call('/v1/call', {'q': q})\n"),
+    ("sql-query-builder-helper-with-placeholders", "a.py", PY + "def _build(q):\n    where = 'status = ?'\n    params = []\n    if q:\n        where += ' AND name LIKE ?'\n        params.append(q)\n    return where, params\n@mcp.tool()\ndef find(q: str):\n    where, params = _build(q)\n    return db.execute(f'SELECT * FROM t WHERE {where}', params).fetchall()\n"),
     ("sqlalchemy-orm-select", "a.py", PY + "from sqlalchemy import select\n@mcp.tool()\nasync def find(name: str, session):\n    stmt = select(User).where(User.name == name)\n    return (await session.execute(stmt)).all()\n"),
     ("sqlalchemy-orm-with-fstring-value", "a.py", PY + "from sqlalchemy import select\n@mcp.tool()\nasync def find(name: str, session):\n    return (await session.execute(select(User).where(User.label == f'user-{name}'))).all()\n"),
     ("sqlalchemy-orm-helper-statement", "a.py", PY + "@mcp.tool()\nasync def stats(scope: str, session):\n    return (await session.execute(facet_count_stmt(scope))).all()\n"),
@@ -124,5 +129,14 @@ SAFE = [
     ("validated-by-registry-lookup", "a.py", PY + "def _page(i):\n    return open('/srv/' + i).read()\n@mcp.tool()\ndef show(desk_id: str):\n    if registry.get_spec(desk_id) is None:\n        raise ValueError('unknown desk')\n    return _page(desk_id)\n"),
     ("helper-guarded-by-caller", "a.py", PY + "from pathlib import Path\nROOT = Path('/srv').resolve()\ndef _serve(p):\n    return open(p).read()\n@mcp.tool()\ndef show(name: str):\n    p = (ROOT / name).resolve()\n    if p.is_relative_to(ROOT):\n        return _serve(p)\n"),
     ("project-resolve-helper-confines-path", "a.py", PY + "def _read(p):\n    return open(p).read()\n@mcp.tool()\ndef show(name: str):\n    checked = resolve_path(name)\n    return _read(checked)\n"),
+    ("derived-name-validated-then-interpolated-in-sql", "a.py", PY + "ACTS = {'claim', 'release'}\n@mcp.tool()\ndef run(b: dict):\n    act = b['action']\n    if act not in ACTS:\n        raise ValueError('no')\n    return db.execute(f\"select meta.{act}_task(?)\", (b['id'],)).fetchall()\n"),
+    ("allowlisted-name-in-shell-string", "a.py", PY + "import os\nALLOWED = {'daily', 'weekly'}\n@mcp.tool()\ndef report(name: str):\n    if name not in ALLOWED:\n        raise ValueError('no')\n    os.system('make-report ' + name)\n"),
     ("exec-of-fixed-program", "a.py", PY + "import os\n@mcp.tool()\ndef restart():\n    os.execvp('systemctl', ['systemctl', 'restart', 'app'])\n"),
 ]
+
+
+# JavaScript / TypeScript cases live in their own module.
+from recall_cases_js import SAFE_JS, VULNERABLE_JS  # noqa: E402
+
+VULNERABLE += VULNERABLE_JS
+SAFE += SAFE_JS
