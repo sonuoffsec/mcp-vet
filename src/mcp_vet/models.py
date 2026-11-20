@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+
+SEVERITIES = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+
+def severity_rank(sev: str) -> int:
+    return SEVERITIES.index(sev)
+
+
+@dataclass(frozen=True)
+class Finding:
+    rule_id: str
+    title: str
+    severity: str
+    file: str
+    line: int
+    snippet: str
+    message: str
+    remediation: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class ScanResult:
+    root: str
+    files_scanned: int
+    findings: list
+
+    def counts(self) -> dict:
+        out = {s: 0 for s in SEVERITIES}
+        for f in self.findings:
+            out[f.severity] += 1
+        return out
