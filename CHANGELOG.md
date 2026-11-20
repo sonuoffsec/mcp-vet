@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1
+
+Precision fixes found by rescanning real servers. No new rules.
+
+- A helper that only calls other clean helpers is now clean (the "does it return its inputs?"
+  analysis runs to a fixpoint), in both languages.
+- JS/TS: `def.fields.map((f) => id(f.column))` is recognized when the callback escapes the
+  element; `db.query({ text, values })` only treats `text` as SQL, so tainted values in the
+  bound-values array no longer count.
+- Python: list, set, dict comprehensions and generator expressions are tainted only when their
+  element expression uses the loop variable without a sanitizer.
+- The recall suite grew to 120 vulnerable expectations and 82 safe cases.
+
 ## 0.2.0
 
 ### Added

@@ -94,6 +94,15 @@ def expr_tainted(node: ast.AST, tainted: Set[str]) -> bool:
             return False
         if isinstance(node.func, ast.Name) and node.func.id in _CLEAN_FUNCS:
             return False  # e.g. a query builder that returns "WHERE a = ?" and a separate params list
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+        # The result is built from the element expression. Iterating tainted data does not
+        # taint it unless the element expression uses the loop variable without sanitizing it.
+        local = set(tainted)
+        for g in node.generators:
+            if expr_tainted(g.iter, tainted):
+                local |= _targets(g.target)
+        parts = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+        return any(expr_tainted(p, local) for p in parts)
     if isinstance(node, ast.Name):
         return node.id in tainted
     return any(expr_tainted(c, tainted) for c in ast.iter_child_nodes(node))
@@ -461,9 +470,13 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
     clients = _http_clients(tree)
     global _CLEAN_FUNCS
     _CLEAN_FUNCS = set()
-    _CLEAN_FUNCS = {fn.name for fn in tree.body
-                    if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and not is_tool_func(fn) and not _returns_tainted(fn)}
+    helpers = [fn for fn in tree.body
+               if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and not is_tool_func(fn)]
+    for _ in range(5):  # a helper that only calls clean helpers is clean too: iterate to a fixpoint
+        grown = {fn.name for fn in helpers if fn.name not in _CLEAN_FUNCS and not _returns_tainted(fn)}
+        if not grown:
+            break
+        _CLEAN_FUNCS |= grown
     try:
         v = _Visitor(rel, lines, clients, _summarize_helpers(tree, rel, lines, clients))
         v.visit(tree)

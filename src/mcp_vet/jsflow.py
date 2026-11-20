@@ -508,12 +508,15 @@ def _tainted(T, lo, hi, tainted: Set[str]) -> bool:
                 end = _skip_call(T, j + 1, hi)
                 j = end
                 continue
-            if t.text in tainted and j + 3 < hi and T[j + 1].text == "." and T[j + 2].text == "map" \
-                    and T[j + 3].text == "(" and bare:
-                mc = _skip_call(T, j + 3, hi)
-                if _callback_ignores_element(T, j + 4, mc - 1, tainted):
-                    j = mc  # items.map(() => '?'): the result does not depend on the items
-                    continue
+            if t.text in tainted and bare:
+                k = j + 1  # skip property accesses: def.fields.map(...)
+                while k + 2 < hi and T[k].text == "." and T[k + 1].kind == "id" and T[k + 2].text != "(":
+                    k += 2
+                if k + 2 < hi and T[k].text == "." and T[k + 1].text == "map" and T[k + 2].text == "(":
+                    mc = _skip_call(T, k + 2, hi)
+                    if _callback_ignores_element(T, k + 3, mc - 1, tainted):
+                        j = mc  # items.map(() => '?'): the result does not depend on the items
+                        continue
             prev = T[j - 1].text if j > lo else ""
             if t.text in tainted and prev not in (".", "?.") \
                     and not (j + 1 < hi and T[j + 1].text == ":" and prev in ("{", ",")):
@@ -775,6 +778,13 @@ class Body:
                 sql = name in SQL_NAMES or (name in SQL_DB_NAMES and root in SQL_DB_ROOTS)
                 if sql and first is not None:
                     a, b = first
+                    if T[a].text == "{":  # c.query({ text: `...`, values: [...] }): only `text` is SQL
+                        obj_close = pairs.get(a, b)
+                        for k in range(a + 1, obj_close):
+                            if T[k].kind == "id" and T[k].text == "text" and T[k + 1].text == ":" \
+                                    and T[k - 1].text in ("{", ","):
+                                a, b = k + 2, expr_end(T, k + 2, obj_close, pairs)
+                                break
                     interpolated = self._t(a, b) and _has_sql_literal(T, a, b) and \
                         (any(T[k].kind == "tpl" and T[k].exprs for k in range(a, b)) or
                          any(T[k].text == "+" for k in range(a, b)))
@@ -916,8 +926,13 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
     ctx = Ctx(rel, text.splitlines(), T, _pairs(T))
     _find_defs(ctx)
     global _CLEAN_RETURNS
-    _CLEAN_RETURNS = {name for name, (params, lo, hi) in ctx.defs.items()
-                      if not _returns_tainted(ctx, params, lo, hi)} | _sanitizer_aliases(ctx)
+    _CLEAN_RETURNS = _sanitizer_aliases(ctx)
+    for _ in range(5):  # a helper that only calls clean helpers is clean too: iterate to a fixpoint
+        grown = {name for name, (params, lo, hi) in ctx.defs.items()
+                 if name not in _CLEAN_RETURNS and not _returns_tainted(ctx, params, lo, hi)}
+        if not grown:
+            break
+        _CLEAN_RETURNS |= grown
 
     handlers = list(_handlers(ctx))
     handler_ranges = [(lo, hi) for _, lo, hi, _ in handlers]
