@@ -1,23 +1,23 @@
-# mcp-vet
+<p align="center">
+  <img src="assets/banner.svg" alt="mcp-vet: vet your MCP servers before your AI trusts them" width="100%">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2DD4BF?style=flat-square"></a>
+  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-3B82F6?style=flat-square">
+  <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-0-2DD4BF?style=flat-square">
+  <img alt="SARIF 2.1.0 output" src="https://img.shields.io/badge/output-text%20%7C%20JSON%20%7C%20SARIF-3B82F6?style=flat-square">
+</p>
 
 Static security scanner for **MCP (Model Context Protocol) servers**. Point it at a server's source or config and it flags the problems that let an attacker hijack an AI agent.
 
 Zero dependencies. One command. Works in CI.
 
-```text
-$ mcp-vet examples/vulnerable-server
+<p align="center">
+  <img src="assets/terminal.svg" alt="Terminal output of mcp-vet scanning a deliberately vulnerable MCP server: one critical, five high, two medium and three low findings" width="760">
+</p>
 
-server.py
-  CRITICAL MCP003  line 8   Hardcoded secret
-  HIGH     MCP002  line 15  Possible tool poisoning / hidden instructions
-  HIGH     MCP001  line 26  Shell or dynamic code execution
-  MEDIUM   MCP005  line 32  Unrestricted file read in tool
-  HIGH     MCP004  line 37  Network transport without authentication
-mcp-config.json
-  HIGH     MCP007  line 5   Overly broad filesystem scope
-
-Summary: 1 CRITICAL, 6 HIGH, 1 MEDIUM, 3 LOW
-```
+<sub>The image above is generated from the scanner's real output by <code>assets/build_terminal_svg.py</code>.</sub>
 
 ## Why
 
@@ -114,6 +114,7 @@ All runs were static: the code was cloned and read, never executed.
 ```bash
 python -m unittest discover -s tests
 python -m mcp_vet src    # the scanner scans itself
+python assets/build_terminal_svg.py    # regenerate the terminal image above
 ```
 
 The `examples/` folder holds a deliberately vulnerable server and a clean one. Never deploy the vulnerable one.

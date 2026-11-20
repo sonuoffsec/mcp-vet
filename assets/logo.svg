@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="mcp-vet logo: a shield containing a magnifying glass with a check mark">
+  <defs>
+    <linearGradient id="g" x1="18" y1="8" x2="110" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 8 L108 24 V62 C108 88 90 108 64 120 C38 108 20 88 20 62 V24 Z" fill="url(#g)"/>
+  <path d="M64 8 L108 24 V62 C108 88 90 108 64 120 C38 108 20 88 20 62 V24 Z" fill="none" stroke="#FFFFFF" stroke-opacity=".25" stroke-width="2"/>
+  <circle cx="58" cy="54" r="22" fill="#0B1220" fill-opacity=".28" stroke="#FFFFFF" stroke-width="6"/>
+  <path d="M48 55 L56 63 L70 46" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M75 71 L89 85" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+</svg>
