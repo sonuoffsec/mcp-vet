@@ -98,6 +98,19 @@ RULES = {
         "internal services or cloud metadata endpoints (SSRF).",
         "Allowlist hosts, block private and link-local addresses, and disable redirects.",
     ),
+    "MCP010": Rule(
+        "MCP010", "SQL built from tool input", "HIGH",
+        "A query is executed that contains, or is entirely supplied by, a tool argument. "
+        "This allows SQL injection or arbitrary database access.",
+        "Use parameterized queries (placeholders plus a parameter tuple). If the tool must run "
+        "caller-supplied SQL, use a read-only database role.",
+    ),
+    "MCP011": Rule(
+        "MCP011", "Unsafe deserialization of tool input", "HIGH",
+        "A tool argument is passed to a deserializer that can execute code (pickle, marshal, "
+        "unsafe YAML).",
+        "Use JSON, or yaml.safe_load, and validate the result against a schema.",
+    ),
     "MCP008": Rule(
         "MCP008", "Hidden Unicode characters", "HIGH",
         "Zero-width, bidirectional-control or tag characters were found. They can hide "
