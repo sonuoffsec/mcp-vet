@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("vulnerable-demo")
 
-AWS_KEY = "AKIAIOSFODNN7EXAMPLE"  # AWS documentation example key
+AWS_KEY = "AKIAIOSFODNN7EXAMPLE"
 
 
 @mcp.tool()

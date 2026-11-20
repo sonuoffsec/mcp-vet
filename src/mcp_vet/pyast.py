@@ -21,6 +21,8 @@ SUBPROC = {"run", "call", "check_call", "check_output", "Popen"}
 SUBPROC_SHELL_ALWAYS = {"getoutput", "getstatusoutput"}
 HTTP_FUNCS = {"get", "post", "put", "delete", "patch", "head", "request", "urlopen"}
 HTTP_MODULES = {"requests", "httpx", "urllib.request", "aiohttp"}
+HTTP_CLIENT_FACTORIES = {"httpx.Client", "httpx.AsyncClient", "requests.Session",
+                         "aiohttp.ClientSession", "urllib3.PoolManager"}
 SKIP_PARAMS = {"self", "cls", "ctx", "context"}
 
 
@@ -35,10 +37,19 @@ def dotted(node: ast.AST) -> str:
     return ""
 
 
+ROUTE_VERBS = {"get", "post", "put", "delete", "patch", "route", "api_route", "websocket"}
+
+
 def is_tool_func(fn) -> bool:
+    """A tool handler, or an HTTP route handler (FastAPI/Flask): both receive attacker input."""
     for d in fn.decorator_list:
         target = d.func if isinstance(d, ast.Call) else d
-        if dotted(target).rsplit(".", 1)[-1] in ("tool", "call_tool"):
+        last = dotted(target).rsplit(".", 1)[-1]
+        if last in ("tool", "call_tool"):
+            return True
+        if isinstance(d, ast.Call) and last in ROUTE_VERBS and d.args \
+                and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str) \
+                and d.args[0].value.startswith("/"):
             return True
     return False
 
@@ -68,6 +79,18 @@ def _targets(node: ast.AST) -> Set[str]:
     return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
 
+def validated_names(fn) -> Set[str]:
+    """Names checked with `in` / `not in` against a collection in an if that returns or raises."""
+    out: Set[str] = set()
+    for n in ast.walk(fn):
+        if isinstance(n, ast.If) and any(isinstance(b, (ast.Return, ast.Raise)) for b in n.body + n.orelse):
+            for c in ast.walk(n.test):
+                if isinstance(c, ast.Compare) and isinstance(c.left, ast.Name)                         and any(isinstance(o, (ast.In, ast.NotIn)) for o in c.ops)                         and not any(isinstance(x, ast.Constant) and isinstance(x.value, str)
+                                    for x in c.comparators):
+                    out.add(c.left.id)
+    return out
+
+
 def taint_set(fn) -> Set[str]:
     a = fn.args
     params = [x.arg for x in a.posonlyargs + a.args + a.kwonlyargs]
@@ -75,7 +98,7 @@ def taint_set(fn) -> Set[str]:
         params.append(a.vararg.arg)
     if a.kwarg:
         params.append(a.kwarg.arg)
-    tainted = {p for p in params if p not in SKIP_PARAMS}
+    tainted = {p for p in params if p not in SKIP_PARAMS} - validated_names(fn)
     for _ in range(3):  # propagate through assignments
         for n in ast.walk(fn):
             if isinstance(n, ast.Assign) and expr_tainted(n.value, tainted):
@@ -101,8 +124,8 @@ def _has_guard(fn, names: Set[str]) -> bool:
 
 
 class _Visitor(ast.NodeVisitor):
-    def __init__(self, rel: str, lines: List[str]):
-        self.rel, self.lines = rel, lines
+    def __init__(self, rel: str, lines: List[str], http_clients: Set[str]):
+        self.rel, self.lines, self.http_clients = rel, lines, http_clients
         self.findings: List[Finding] = []
         self.stack: List[tuple] = []  # (tainted set, in_tool, guard_path, guard_url)
 
@@ -131,7 +154,7 @@ class _Visitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call):
         tainted, in_tool, guard_path, guard_url = self.stack[-1] if self.stack else (set(), False, False, False)
         name = dotted(node.func)
-        last = name.rsplit(".", 1)[-1]
+        last = node.func.attr if isinstance(node.func, ast.Attribute) else name
         first = node.args[0] if node.args else None
         shell_kw = next((k for k in node.keywords if k.arg == "shell"), None)
 
@@ -167,11 +190,32 @@ class _Visitor(ast.NodeVisitor):
         # ---- MCP009: outbound request with tool-controlled URL ----------------------
         if in_tool and not guard_url and last in HTTP_FUNCS and first is not None:
             mod = name.rsplit(".", 1)[0] if "." in name else ""
-            if mod in HTTP_MODULES or mod.endswith(("session", "client")):
+            if mod in HTTP_MODULES or mod in self.http_clients:
                 if expr_tainted(first, tainted):
                     self._add("MCP009", node, "MEDIUM", "A tool argument controls the URL.")
 
         self.generic_visit(node)
+
+
+def _http_clients(tree: ast.AST) -> Set[str]:
+    """Names bound to an HTTP client object, e.g. `async with httpx.AsyncClient() as c`."""
+    out: Set[str] = set()
+
+    def is_factory(expr) -> bool:
+        return isinstance(expr, ast.Call) and dotted(expr.func) in HTTP_CLIENT_FACTORIES
+
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.With, ast.AsyncWith)):
+            for item in n.items:
+                if is_factory(item.context_expr) and item.optional_vars is not None:
+                    out.add(dotted(item.optional_vars))
+        elif isinstance(n, ast.Assign) and is_factory(n.value):
+            for t in n.targets:
+                out.add(dotted(t))
+        elif isinstance(n, ast.AnnAssign) and n.value is not None and is_factory(n.value):
+            out.add(dotted(n.target))
+    out.discard("")
+    return out
 
 
 def analyze(rel: str, text: str) -> Optional[List[Finding]]:
@@ -180,6 +224,6 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
         tree = ast.parse(text)
     except (SyntaxError, ValueError, RecursionError):
         return None
-    v = _Visitor(rel, text.splitlines())
+    v = _Visitor(rel, text.splitlines(), _http_clients(tree))
     v.visit(tree)
     return v.findings

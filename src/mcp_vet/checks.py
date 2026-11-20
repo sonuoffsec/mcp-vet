@@ -3,18 +3,19 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import List, Optional
 
 from .models import Finding
 from .rules import RULES, CODE_EXTS
 
 TOOL_MARKERS = re.compile(
-    r"(@\w+\.tool\b|\bserver\.tool\(|registerTool|@tool\b|setRequestHandler|CallToolRequestSchema|FastMCP)"
+    r"(@\w+\.tool\b|[\"']/mcp(/|[\"'])|tools/call|\bserver\.tool\(|registerTool|@tool\b|setRequestHandler|CallToolRequestSchema|FastMCP)"
 )
 NET_TRANSPORT = re.compile(
     r"(transport\s*=\s*['\"](sse|streamable-http|http)['\"]"
     r"|SSEServerTransport|StreamableHTTPServerTransport|SseServerTransport"
-    r"|sse_app\(|streamable_http_app\(|\bapp\.listen\()"
+    r"|sse_app\(|streamable_http_app\(|\bapp\.listen\(|\bFastAPI\(|\bFlask\(|uvicorn\.run\()"
 )
 AUTH_HINT = re.compile(
     r"(authorization|bearer|api[_-]?key|oauth|auth_?middleware|verify_?token|jwt|x-api-key)",
@@ -28,6 +29,7 @@ PATH_GUARD = re.compile(
     r"(is_relative_to|commonpath|\.relative_to\(|realpath|path\.relative\(|startsWith\(\s*(root|base|allowed|safe))",
     re.IGNORECASE,
 )
+MODULE_ANCHORED = re.compile(r"(import\.meta|__dirname|__filename|new URL\()")
 BROAD_SCOPES = {"/", "~", "~/", "c:\\", "c:/", "c:\\\\", "/home", "/users", "/root"}
 
 
@@ -65,11 +67,17 @@ def check_file_read(file: str, text: str, ext: str,
     if ext not in CODE_EXTS or not TOOL_MARKERS.search(text):
         return []
     has_guard = PATH_GUARD.search(text) is not None if project_has_guard is None else project_has_guard
-    read = FILE_READ.search(text)
-    if not read or has_guard:
+    if has_guard:
         return []
-    line = _line_of(text, read.start())
-    return [_finding("MCP005", file, line, text.splitlines()[line - 1])]
+    for read in FILE_READ.finditer(text):
+        line = _line_of(text, read.start())
+        src = text.splitlines()[line - 1]
+        if MODULE_ANCHORED.search(src):
+            continue  # path is relative to this module, not tool input
+        f = _finding("MCP005", file, line, src,
+                     "Unverified: this language has no taint analysis, so the path may be constant.")
+        return [replace(f, severity="LOW")]
+    return []
 
 
 def check_dependencies(file: str, text: str, name: str) -> List[Finding]:

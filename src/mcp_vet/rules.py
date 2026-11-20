@@ -34,9 +34,9 @@ RULES = {
         pattern=_rx(
             r"(subprocess\.\w+\([^)]*shell\s*=\s*True"  # mcp-vet: ignore
             r"|\bos\.(system|popen)\s*\("  # mcp-vet: ignore
-            r"|(?<![\w.])(eval|exec)\("  # mcp-vet: ignore
+            r"|(?<![\w.$])(eval|exec)\("  # mcp-vet: ignore
             r"|\bchild_process\b.*\bexec(Sync)?\s*\("  # mcp-vet: ignore
-            r"|(?<![\w.])exec(Sync)?\s*\(\s*(`[^`]*\$\{|[^)\n]*\+)"  # mcp-vet: ignore
+            r"|(?<![\w.$])exec(Sync)?\s*\(\s*(`[^`]*\$\{|[^)\n]*\+)"  # mcp-vet: ignore
             r"|new\s+Function\s*\()"  # mcp-vet: ignore
         ),
         exts=CODE_EXTS,
@@ -50,7 +50,7 @@ RULES = {
             r"(ignore\s+(all\s+|any\s+)?(previous|prior|above)\s+(instructions|rules)"  # mcp-vet: ignore
             r"|<\s*important\s*>"  # mcp-vet: ignore
             r"|do\s+not\s+(tell|mention|inform|reveal|show)[^.\n]{0,40}(user|human)"  # mcp-vet: ignore
-            r"|\b(read|cat|send|upload|include|attach)\b[^.\n]{0,60}(~/\.ssh|id_rsa|/etc/passwd|\.aws/credentials|\.env\b)"  # mcp-vet: ignore
+            r"|\b(read|cat|send|upload|include|attach)\b[^.\n]{0,60}(~/\.ssh/id_|id_rsa|id_ed25519|/etc/passwd|/etc/shadow|\.aws/credentials)"  # mcp-vet: ignore
             r"|before\s+(using|calling)\s+this\s+tool[^.\n]{0,60}(first|must))"  # mcp-vet: ignore
         ),
         exts=CODE_EXTS + CONFIG_EXTS,

@@ -81,20 +81,32 @@ Omit the rule ID to suppress every rule on that line.
 
 - **Python files are parsed into an AST** and checked with simple taint tracking. Values that come from a tool's parameters are "tainted". Taint follows assignments, and calls to functions named like `validate`, `sanitize`, `safe`, `check`, `allow` or `quote` (for example `shlex.quote`) clear it. A tool that runs a constant command is not flagged.
 - **JS/TS and config files use patterns.** There is no JS parser yet, so JS findings are noisier than Python ones.
-- **Authentication and path guards are looked for across the whole project**, not just in the file with the transport or the file read.
+- **HTTP route handlers count as entry points.** Python functions decorated like `@app.post("/mcp/call")` (FastAPI, Flask) are treated like tool handlers, so hand-rolled MCP-over-HTTP servers are analyzed too.
+- **Authentication and path guards are looked for per app**: in the same folder, or any parent folder, that has its own `requirements.txt`, `package.json` or `Dockerfile`. One app's auth does not hide another app's gap.
+- **Allowlist checks count.** A parameter tested with `if x not in ALLOWED: return/raise` is treated as validated.
 - Test files and test directories are skipped by default (`--include-tests` to scan them).
 
 ## Tested on real servers
 
-The scanner was run, statically, on public repos: the official `modelcontextprotocol/servers` and `python-sdk`, `github/github-mcp-server`, and `punkpeye/awesome-mcp-servers`. The first pass produced 859 findings, 849 of them false positives (translated READMEs with Persian and emoji characters, a comment containing the word `eval`, a path-traversal *test*). Each one became a regression test. After the fixes, the remaining findings across those repos are 2 MEDIUM and 8 LOW, all low-risk (a developer-CLI `shell=True` call and unpinned dependency ranges). None were confirmed as vulnerabilities; this was a heuristic scan, not an audit. These repos are mostly well-maintained, so a low count is expected. It says little about how the tool does on a weaker server.
+All runs were static: the code was cloned and read, never executed.
+
+**Precision on 67 small community MCP servers** (about 29,600 files, Python and TypeScript/JavaScript):
+
+- The first pass reported **715 HIGH or CRITICAL findings**. Almost all were false positives: emoji and Persian/Sinhala text flagged as hidden Unicode, code that *reads* `.env` flagged as tool poisoning, Playwright's `$eval` flagged as `eval`, security libraries that contain the very strings they block.
+- Each cause was fixed and became a regression test. After tuning, **8 HIGH/CRITICAL findings remain, in 5 repos. I reviewed all 8 by hand and none is a vulnerability**: three are blocklists or defensive examples in security libraries, two are attack payloads in test data, one is defensive prompt text telling the model to treat such phrases as data, one is a test credential, and one is a zero-width character in a docstring.
+- The Python path-handling findings (MCP005, MEDIUM) are the most useful tier. I read four in detail: three were real (a tool argument passed straight to `open()`, or only checked with `os.path.isfile`), and one was a false positive that is now fixed (the argument had been checked against an allowlist). Many of these servers are local developer tools where reading a user-supplied path is the point, so "real" here means the rule's condition holds, not that the server is exploitable.
+
+**Recall on a deliberately vulnerable server.** DVAP's MCP lab contains an unauthenticated endpoint, an arbitrary file read and two SSRF calls. **The first version of this scanner found none of them.** It only understood the official SDK's decorators, and one app's auth elsewhere in the repo hid the missing auth. After adding route-handler support and per-app scoping, it finds all of them (plus a further SSRF in a second lab). That is one server, so treat it as a sanity check, not a measured recall rate.
+
+**What this does not show.** The rules were tuned on this same sample, so the precision above is optimistic. None of the 67 servers was malicious, so I have not measured how well tool-poisoning detection (MCP002) works against real attacks beyond the patterns in the tests.
 
 ## Limits (read this)
 
 - **Static analysis.** It does not run your server, so runtime-only bugs are missed.
 - **Taint tracking is intra-function.** It does not follow a tool argument into another function. A helper that receives tainted data and runs it will not be flagged unless the helper itself looks dangerous. Sanitizer detection is name-based, so a function called `validate_path` that does not validate will be trusted.
 - **No JS/TS parser.** Those checks are line patterns.
-- **MCP004 and MCP005 trust any auth or guard code in the project.** One unrelated `Authorization` header elsewhere will silence MCP004.
-- Only a small, hand-picked set of real servers has been tested, and it was mostly well-maintained code.
+- **MCP004 and MCP005 trust any auth or guard code in the same app.** One unrelated `Authorization` header in the app will silence MCP004, and an existence check such as `os.path.isfile` is correctly *not* treated as a guard, but a badly written custom one named `validate_path` would be.
+- **Recall is measured on one server** (DVAP's MCP lab) and precision on 67 servers that were also used to tune the rules. Expect different results on code that looks unlike these.
 - A clean report is not a security guarantee.
 
 ## Develop
