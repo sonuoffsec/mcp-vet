@@ -85,6 +85,22 @@ include_tests = false
 MCP009 = "LOW"                     # change a rule's severity, or "OFF"
 ```
 
+Python projects can also use a `[tool.mcp-vet]` table in `pyproject.toml` with the same keys:
+
+```toml
+[tool.mcp-vet]
+fail_on = "MEDIUM"
+min_severity = "LOW"
+ignore = ["legacy/**", "vendor"]
+disable = ["MCP006"]
+include_tests = false
+
+[tool.mcp-vet.severity]
+MCP009 = "LOW"
+```
+
+If both files exist in the same folder, `.mcp-vet.toml` wins.
+
 Flags on the command line always win over the file. A typo is an error with a suggestion (`unknown setting 'fail-on' (did you mean 'fail_on'?)`), never silently ignored. `--config FILE` picks a file explicitly and `--no-config` ignores it.
 
 ### Adopt it on an existing project

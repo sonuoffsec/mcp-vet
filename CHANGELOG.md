@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Read settings from `[tool.mcp-vet]` table in `pyproject.toml`, with `.mcp-vet.toml` taking precedence when both exist in the same directory.
+
 ## 0.3.0
 
 Driven by testing against other people's deliberately vulnerable MCP servers (Invariant Labs'

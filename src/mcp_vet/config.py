@@ -1,4 +1,4 @@
-"""Optional project configuration: a `.mcp-vet.toml` next to the code you scan.
+"""Optional project configuration: `.mcp-vet.toml` or `[tool.mcp-vet]` in `pyproject.toml`.
 
     fail_on = "MEDIUM"            # exit 1 at or above this severity (the --fail-on flag wins)
     min_severity = "LOW"          # hide findings below this
@@ -25,6 +25,7 @@ from .models import SEVERITIES, ScanResult
 from .rules import RULES
 
 CONFIG_NAME = ".mcp-vet.toml"
+PYPROJECT_NAME = "pyproject.toml"
 TOP_LEVEL = {"fail_on", "min_severity", "ignore", "disable", "include_tests", "severity"}
 
 
@@ -87,6 +88,13 @@ def _value(raw: str):
         return int(raw)
     if raw.startswith("[") and raw.endswith("]"):
         return [_value(i) for i in _split_items(raw[1:-1])]
+    if raw.startswith("{") and raw.endswith("}"):
+        out = {}
+        for item in _split_items(raw[1:-1]):
+            if "=" in item:
+                k, _, v = item.partition("=")
+                out[k.strip().strip("\"'")] = _value(v)
+        return out
     raise ValueError(f"cannot read the value {raw!r}")
 
 
@@ -106,7 +114,9 @@ def _mini_toml(text: str) -> dict:
             continue
         header = re.fullmatch(r"\[([A-Za-z0-9_.\-]+)\]", line)
         if header:
-            table = data.setdefault(header.group(1), {})
+            table = data
+            for part in header.group(1).split("."):
+                table = table.setdefault(part, {})
             continue
         if "=" not in line:
             raise ValueError(f"line {n}: expected `key = value`")
@@ -145,6 +155,28 @@ def parse(text: str, source: str = CONFIG_NAME) -> Config:
         data = _load_toml(text)
     except Exception as e:  # tomllib.TOMLDecodeError or our ValueError
         raise ConfigError(f"{source}: {e}") from None
+
+    is_pyproject = (
+        source == PYPROJECT_NAME
+        or source.endswith("/" + PYPROJECT_NAME)
+        or source.endswith("\\" + PYPROJECT_NAME)
+    )
+    if not is_pyproject and (
+        "tool" in data
+        and isinstance(data.get("tool"), dict)
+        and ("mcp-vet" in data["tool"] or "mcp_vet" in data["tool"])
+    ):
+        is_pyproject = True
+
+    if is_pyproject:
+        tool = data.get("tool")
+        if not isinstance(tool, dict) or ("mcp-vet" not in tool and "mcp_vet" not in tool):
+            raise ConfigError(f"{source}: missing [tool.mcp-vet] table")
+        raw_mcp = tool.get("mcp-vet") if "mcp-vet" in tool else tool.get("mcp_vet")
+        if not isinstance(raw_mcp, dict):
+            raise ConfigError(f"{source}: [tool.mcp-vet] must be a table")
+        data = raw_mcp
+
     for key in data:
         if key not in TOP_LEVEL:
             hint = difflib.get_close_matches(key, TOP_LEVEL, n=1)
@@ -172,14 +204,32 @@ def parse(text: str, source: str = CONFIG_NAME) -> Config:
     return cfg
 
 
+def _has_mcp_vet_config(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if "[tool.mcp-vet]" not in text and "[tool.mcp_vet]" not in text:
+        return False
+    try:
+        data = _load_toml(text)
+        tool = data.get("tool")
+        return isinstance(tool, dict) and ("mcp-vet" in tool or "mcp_vet" in tool)
+    except Exception:
+        return True
+
+
 def find(start: str) -> Optional[Path]:
-    """The nearest .mcp-vet.toml in the scanned folder or up to four folders above it."""
+    """The nearest .mcp-vet.toml or pyproject.toml in the scanned folder or up to four folders above it."""
     p = Path(start).resolve()
     p = p if p.is_dir() else p.parent
     for folder in [p] + list(p.parents)[:4]:
         candidate = folder / CONFIG_NAME
         if candidate.is_file():
             return candidate
+        candidate_pyproject = folder / PYPROJECT_NAME
+        if candidate_pyproject.is_file() and _has_mcp_vet_config(candidate_pyproject):
+            return candidate_pyproject
     return None
 
 

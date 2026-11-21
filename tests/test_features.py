@@ -65,6 +65,14 @@ class MiniToml(unittest.TestCase):
         with self.assertRaises(ValueError):
             config._mini_toml('ignore = ["never closed"')
 
+    def test_reads_dotted_tables(self):
+        data = config._mini_toml(
+            '[tool.mcp-vet]\nfail_on = "MEDIUM"\n\n'
+            '[tool.mcp-vet.severity]\nMCP001 = "LOW"\n'
+        )
+        self.assertEqual(data["tool"]["mcp-vet"]["fail_on"], "MEDIUM")
+        self.assertEqual(data["tool"]["mcp-vet"]["severity"]["MCP001"], "LOW")
+
 
 class ConfigParsing(unittest.TestCase):
     def test_valid_file(self):
@@ -76,6 +84,25 @@ class ConfigParsing(unittest.TestCase):
     def test_typo_in_a_setting_suggests_the_right_one(self):
         with self.assertRaisesRegex(config.ConfigError, r"did you mean 'fail_on'"):
             config.parse('fail-on = "HIGH"')
+
+    def test_valid_pyproject_toml(self):
+        cfg = config.parse(
+            '[project]\nname = "demo"\n\n'
+            '[tool.mcp-vet]\nfail_on = "medium"\nmin_severity = "LOW"\nignore = ["x"]\n'
+            'disable = ["MCP006"]\n\n[tool.mcp-vet.severity]\nMCP009 = "off"\n',
+            source="pyproject.toml",
+        )
+        self.assertEqual((cfg.fail_on, cfg.min_severity), ("MEDIUM", "LOW"))
+        self.assertEqual(cfg.severity, {"MCP009": "OFF"})
+        self.assertEqual(cfg.source, "pyproject.toml")
+
+    def test_pyproject_missing_tool_table_raises_error(self):
+        with self.assertRaisesRegex(config.ConfigError, r"missing \[tool\.mcp-vet\] table"):
+            config.parse('[project]\nname = "demo"\n', source="pyproject.toml")
+
+    def test_pyproject_typo_in_setting_suggests_fix(self):
+        with self.assertRaisesRegex(config.ConfigError, r"did you mean 'fail_on'"):
+            config.parse('[tool.mcp-vet]\nfail-on = "HIGH"\n', source="pyproject.toml")
 
     def test_errors_name_the_problem(self):
         for text, needle in [('fail_on = "EXTREME"', "not valid"),
@@ -159,6 +186,41 @@ class ConfigBehaviour(unittest.TestCase):
         d, root = project({"a.py": VULN}, 'min_severity = "LOW"\n')
         with d:
             self.assertIn(".mcp-vet.toml", run(str(root), "--no-color")[1])
+
+    def test_pyproject_toml_configuration(self):
+        pyproject = '[project]\nname = "demo"\n\n[tool.mcp-vet]\ndisable = ["MCP001"]\n'
+        d, root = project({"a.py": VULN, "pyproject.toml": pyproject})
+        with d:
+            code, files, _ = report_files(root)
+            self.assertEqual((code, files), (0, []))
+            self.assertIn("pyproject.toml", run(str(root), "--no-color")[1])
+
+    def test_mcp_vet_toml_wins_over_pyproject_in_same_folder(self):
+        pyproject = '[tool.mcp-vet]\nfail_on = "LOW"\n'
+        d, root = project({"a.py": VULN, "pyproject.toml": pyproject}, cfg='fail_on = "CRITICAL"\n')
+        with d:
+            self.assertEqual(run(str(root), "--no-color")[0], 0)
+            self.assertIn(".mcp-vet.toml", run(str(root), "--no-color")[1])
+
+    def test_pyproject_without_tool_table_is_ignored_and_parent_config_used(self):
+        pyproject = '[project]\nname = "demo"\n'
+        d, root = project({"sub/a.py": VULN, "sub/pyproject.toml": pyproject},
+                          cfg='disable = ["MCP001"]\n')
+        with d:
+            self.assertEqual(report_files(root / "sub")[1], [])
+
+    def test_pyproject_severity_subtable(self):
+        pyproject = (
+            '[tool.mcp-vet]\n'
+            'fail_on = "CRITICAL"\n\n'
+            '[tool.mcp-vet.severity]\n'
+            'MCP001 = "LOW"\n'
+        )
+        d, root = project({"a.py": VULN, "pyproject.toml": pyproject})
+        with d:
+            code, _, data = report_files(root)
+            self.assertEqual(code, 0)
+            self.assertEqual(data["findings"][0]["severity"], "LOW")
 
 
 class Baseline(unittest.TestCase):
