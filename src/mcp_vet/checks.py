@@ -187,6 +187,21 @@ def _credential_value(key: str, val: str) -> bool:
     return _looks_random(val)
 
 
+PUBLIC_KEY_NEIGHBOURS = re.compile(r"\b(appId|applicationId|application_id|indexName|index_name)\b")
+
+
+def _public_by_design(lines: List[str], i: int, line: str, val: str) -> bool:
+    """Keys that are meant to ship in client code: PostHog project keys, Algolia search-only keys,
+    and example values inside comments."""
+    if val.startswith("phc_"):  # PostHog project key: write-only, public
+        return True
+    if re.fullmatch(r"[0-9a-f]{32}", val):  # Algolia search key, next to its application and index
+        near = "\n".join(lines[max(0, i - 5): i + 4])
+        if PUBLIC_KEY_NEIGHBOURS.search(near):
+            return True
+    return line.lstrip().startswith(("//", "#", "*", "/*"))  # documentation example
+
+
 def _mask(line: str, match, group: str = "val") -> str:
     v = match.group(group)
     return line.replace(v, v[:2] + "***REDACTED***", 1)
@@ -199,13 +214,15 @@ def check_credentials(file: str, text: str, ext: str, name: str) -> List[Finding
             or ".github/" in low_path or re.search(r"(^|/)(docker-)?compose[^/]*\.ya?ml$", low_path):
         return []  # lock files list package names; CI and compose files hold throwaway dev credentials
     out: List[Finding] = []
-    for i, line in enumerate(text.splitlines(), 1):
+    all_lines = text.splitlines()
+    for i, line in enumerate(all_lines, 1):
         if len(line) > 2000 or RULES["MCP003"].pattern.search(line):  # known formats are MCP003's
             continue
         hit = None
         m = CRED_ASSIGN.search(line)
         # A literal followed by `+` is only the prefix of a generated value ("tok_" + randomUUID()).
-        if m and not m.group("after").lstrip().startswith("+") and _credential_value(m.group("key"), m.group("val")):
+        if m and not m.group("after").lstrip().startswith("+") and _credential_value(m.group("key"), m.group("val")) \
+                and not _public_by_design(all_lines, i - 1, line, m.group("val")):
             hit, what = m, "A secret-named variable or key is assigned a literal value."
         if hit is None:
             m = CRED_URL.search(line)

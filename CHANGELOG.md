@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- MCP012 no longer reports keys that are meant to be public (PostHog `phc_` project keys, Algolia search-only keys next to an application id and index) or example values in comments.
+- MCP008 ignores invisible characters used in comparisons and lookups (code that strips or tests for them).
+- Findings under `demo` and `demos` folders are one level lower, like docs and scripts.
+
 ## 0.3.1
 
 Two contributions from @abhishekrajv7-cmd.

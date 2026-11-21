@@ -21,7 +21,8 @@ RTL = re.compile(
 # Lines that clean, match or strip these characters are defensive code, not a payload.
 DEFENSIVE = re.compile(
     r"(re\.(compile|sub|match|search|findall)\(|RegExp\(|\.replace(All)?\(|\.strip\(|"
-    r"\.lstrip\(|\.rstrip\(|\.test\(|\.normalize\(|/[gimsuyd]{0,5}\s*[;,)\]]|\\s)"
+    r"\.lstrip\(|\.rstrip\(|\.test\(|\.normalize\(|/[gimsuyd]{0,5}\s*[;,)\]]|\\s|"
+    r"[!=]==?\s*[\"'`]|\.(includes|has|indexOf)\(|\bin\s*[\(\[{])"  # comparing a character with a literal
 )
 
 
