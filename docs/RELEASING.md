@@ -8,7 +8,8 @@ create, store or leak.
 
 1. Create an account on https://pypi.org and enable two-factor authentication.
 2. On PyPI go to **Your account > Publishing > Add a new pending publisher** and enter:
-   - PyPI project name: `mcp-vet`
+   - PyPI project name: `mcp-vet-scanner` (`mcp-vet` is blocked as too similar to the unrelated
+     `mcpvet` project; the command, module and repository keep the name `mcp-vet`)
    - Owner: `sonuoffsec`
    - Repository name: `mcp-vet`
    - Workflow name: `release.yml`
@@ -16,7 +17,7 @@ create, store or leak.
 3. On GitHub go to the repository **Settings > Environments > New environment**, name it
    `pypi`, and (recommended) add yourself as a required reviewer so every upload needs a click.
 
-The first successful release creates the `mcp-vet` project on PyPI and turns the pending
+The first successful release creates the `mcp-vet-scanner` project on PyPI and turns the pending
 publisher into a normal one.
 
 ## Each release

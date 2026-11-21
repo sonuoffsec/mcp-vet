@@ -4,6 +4,10 @@
 
 Precision fixes found by rescanning real servers. No new rules.
 
+**Packaging:** published on PyPI as `mcp-vet-scanner` (`pip install mcp-vet-scanner`). The name `mcp-vet`
+is blocked there as too similar to an unrelated project, so only the PyPI name differs: the
+command is still `mcp-vet`, the Python module `mcp_vet`, and the repository `sonuoffsec/mcp-vet`.
+
 - A helper that only calls other clean helpers is now clean (the "does it return its inputs?"
   analysis runs to a fixpoint), in both languages.
 - JS/TS: `def.fields.map((f) => id(f.column))` is recognized when the callback escapes the

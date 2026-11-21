@@ -3,7 +3,7 @@ name: Release
 # Publishes to PyPI when a GitHub release is published.
 # Uses PyPI "trusted publishing" (OIDC), so no API token is stored anywhere.
 # One-time setup on pypi.org: Account settings > Publishing > add a pending publisher with
-#   project: mcp-vet   owner: sonuoffsec   repository: mcp-vet
+#   project: mcp-vet-scanner   owner: sonuoffsec   repository: mcp-vet
 #   workflow: release.yml   environment: pypi
 
 on:

@@ -21,9 +21,17 @@ An MCP server lets an AI take real actions: read files, run commands, call APIs.
 ## Install
 
 ```bash
+pip install mcp-vet-scanner   # needs Python 3.9+, no other dependencies
+mcp-vet --version             # the command is `mcp-vet`
+```
+
+The PyPI package is called `mcp-vet-scanner` because `mcp-vet` is too similar to an unrelated project already on PyPI. The command, the repository and the Python module are all `mcp-vet`.
+
+From source:
+
+```bash
 git clone https://github.com/sonuoffsec/mcp-vet && cd mcp-vet
-pip install -e .              # needs Python 3.9+, no other dependencies
-mcp-vet --version
+pip install -e .
 ```
 
 Or run it without installing: `PYTHONPATH=src python -m mcp_vet ./my-server`.
@@ -67,7 +75,7 @@ Omit the rule ID to suppress every rule on that line.
 ## GitHub Action
 
 ```yaml
-- run: pip install git+https://github.com/sonuoffsec/mcp-vet
+- run: pip install mcp-vet-scanner
 - run: mcp-vet . -f sarif -o mcp-vet.sarif --fail-on HIGH
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
@@ -143,7 +151,7 @@ The `examples/` folder holds a deliberately vulnerable server and a clean one. N
 
 ## Disclaimer
 
-This is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by Anthropic or the Model Context Protocol project. "MCP" and other names mentioned belong to their respective owners.
+This is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by Anthropic or the Model Context Protocol project, and it is unrelated to the PyPI project `mcpvet`, which is a different tool. "MCP" and other names mentioned belong to their respective owners.
 
 The software is provided "as is", without warranty of any kind (see [LICENSE](LICENSE)). A clean scan is not a guarantee that a server is secure.
 

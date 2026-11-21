@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp-vet"
+name = "mcp-vet-scanner"
 version = "0.2.1"
 description = "Static security scanner for MCP (Model Context Protocol) servers. Zero dependencies."
 readme = "README.md"
