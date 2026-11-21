@@ -60,6 +60,11 @@ def as_text(result: ScanResult, color: bool = False, verbose: bool = False,
             (" ", "Rules loaded", f"{len(RULES)} checks"),
             (" ", "Files scanned", str(result.files_scanned)),
             (" ", "Started at", result.started or "-")]
+    if result.config_source:
+        info.append((" ", "Config", result.config_source))
+    if result.baselined:
+        info.append((" ", "Baseline", f"{result.baselined} accepted finding"
+                     f"{'s' if result.baselined != 1 else ''} hidden"))
     for sym, label, value in info:
         out.append(f"  {p(sym, CYAN)} {label:<15} : {value}")
     out += ["",
@@ -123,6 +128,7 @@ def as_json(result: ScanResult) -> str:
         "version": __version__,
         "root": result.root,
         "files_scanned": result.files_scanned,
+        "baselined": result.baselined,
         "summary": result.counts(),
         "findings": [f.to_dict() for f in result.findings],
     }, indent=2)

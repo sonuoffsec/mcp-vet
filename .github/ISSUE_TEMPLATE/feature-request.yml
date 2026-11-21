@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest a rule, an output option or an integration
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like mcp-vet to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter for MCP servers specifically?

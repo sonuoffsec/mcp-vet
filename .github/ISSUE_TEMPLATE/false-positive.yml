@@ -1,0 +1,35 @@
+name: False positive
+description: mcp-vet reported something that is not a problem
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. False-positive reports are how the rules improve. Please keep the snippet small and do not paste secrets.
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id and severity
+      placeholder: "MCP005, MEDIUM"
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Smallest snippet that reproduces it
+      description: A few lines is ideal. Include the language.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this safe?
+      description: What makes the flagged code correct (a validation, an allowlist, a constant, an escaping helper)?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mcp-vet version
+      placeholder: "mcp-vet --version"

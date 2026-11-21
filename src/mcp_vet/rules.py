@@ -51,7 +51,9 @@ RULES = {
             r"|<\s*important\s*>"  # mcp-vet: ignore
             r"|do\s+not\s+(tell|mention|inform|reveal|show)[^.\n]{0,40}(user|human)"  # mcp-vet: ignore
             r"|\b(read|cat|send|upload|include|attach)\b[^.\n]{0,60}(~/\.ssh/id_|id_rsa|id_ed25519|/etc/passwd|/etc/shadow|\.aws/credentials)"  # mcp-vet: ignore
-            r"|before\s+(using|calling)\s+this\s+tool[^.\n]{0,60}(first|must))"  # mcp-vet: ignore
+            r"|before\s+(using|calling)\s+this\s+tool[^.\n]{0,60}(first|must)"  # mcp-vet: ignore
+            r"|<!--\s*(system|assistant)\s+(instruction|prompt|message|override)"  # mcp-vet: ignore
+            r"|\bsystem\s+instruction\s*:)"  # mcp-vet: ignore
         ),
         exts=CODE_EXTS + CONFIG_EXTS,
     ),
@@ -64,6 +66,7 @@ RULES = {
             r"|gh[pousr]_[A-Za-z0-9]{36,}"
             r"|sk-ant-[A-Za-z0-9_-]{20,}"
             r"|sk-[A-Za-z0-9]{32,}"
+            r"|\bsk-[A-Za-z0-9][A-Za-z0-9_-]{23,}"
             r"|xox[baprs]-[A-Za-z0-9-]{10,}"
             r"|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----)"
         ),
@@ -110,6 +113,23 @@ RULES = {
         "A tool argument is passed to a deserializer that can execute code (pickle, marshal, "
         "unsafe YAML).",
         "Use JSON, or yaml.safe_load, and validate the result against a schema.",
+    ),
+    "MCP012": Rule(
+        "MCP012", "Hardcoded credential", "HIGH",
+        "A password, API key, token or credentialed URL is written into source or config.",
+        "Remove it from the repository, rotate it, and load it from the environment or a secret manager.",
+    ),
+    "MCP013": Rule(
+        "MCP013", "Obfuscated strings", "MEDIUM",
+        "Many string literals are base64-encoded text. Legitimate servers rarely hide their own "
+        "strings, and obfuscation is a common way to conceal URLs, tool names and payloads.",
+        "Read the decoded strings. If the code has no reason to hide them, treat the server as suspicious.",
+    ),
+    "MCP014": Rule(
+        "MCP014", "Unpinned package launched by an MCP client config", "MEDIUM",
+        "The client downloads and runs the latest published version of this server every time it "
+        "starts. A compromised or hijacked release would run with your user's permissions.",
+        "Pin an exact version, for example `npx -y package@1.2.3` or `uvx package==1.2.3`.",
     ),
     "MCP008": Rule(
         "MCP008", "Hidden Unicode characters", "HIGH",

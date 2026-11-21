@@ -1,0 +1,83 @@
+name: "mcp-vet"
+description: "Static security scan for MCP servers written in Python, JavaScript and TypeScript. Zero dependencies."
+author: "sonuoffsec"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Directory or file to scan."
+    default: "."
+  fail-on:
+    description: "Fail the step if a finding at or above this severity exists (INFO, LOW, MEDIUM, HIGH, CRITICAL)."
+    default: "HIGH"
+  min-severity:
+    description: "Hide findings below this severity."
+    default: "INFO"
+  package:
+    description: "pip requirement to install. Pin it for reproducible runs, e.g. mcp-vet-scanner==0.2.2."
+    default: "mcp-vet-scanner"
+  sarif-file:
+    description: "Where to write the SARIF report."
+    default: "mcp-vet.sarif"
+  upload-sarif:
+    description: "Upload the SARIF report to GitHub code scanning. The calling job needs `security-events: write`."
+    default: "false"
+  extra-args:
+    description: "Extra arguments passed to mcp-vet, e.g. '--include-tests'."
+    default: ""
+
+outputs:
+  exit-code:
+    description: "mcp-vet's exit code: 0 clean, 1 findings at or above fail-on, 2 usage error."
+    value: ${{ steps.scan.outputs.exit-code }}
+  sarif-file:
+    description: "Path of the SARIF report."
+    value: ${{ inputs.sarif-file }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install mcp-vet
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: python -m pip install --disable-pip-version-check --quiet "$PACKAGE"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        SARIF: ${{ inputs.sarif-file }}
+        EXTRA: ${{ inputs.extra-args }}
+      run: |
+        # Inputs arrive as environment variables, never interpolated into the script.
+        set +e
+        # shellcheck disable=SC2086
+        mcp-vet "$SCAN_PATH" -f sarif -o "$SARIF" --min-severity "$MIN_SEVERITY" --fail-on "$FAIL_ON" $EXTRA
+        # shellcheck disable=SC2086
+        mcp-vet "$SCAN_PATH" --no-color --min-severity "$MIN_SEVERITY" --fail-on "$FAIL_ON" $EXTRA
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit 0
+
+    - name: Upload SARIF to code scanning
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: mcp-vet
+
+    - name: Apply the gate
+      shell: bash
+      env:
+        CODE: ${{ steps.scan.outputs.exit-code }}
+      run: exit "$CODE"

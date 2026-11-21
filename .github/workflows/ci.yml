@@ -59,3 +59,28 @@ jobs:
             echo "vulnerable example passed the gate, which means detection broke" >&2
             exit 1
           fi
+
+  action:
+    name: The GitHub Action works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: A clean server passes
+        uses: ./
+        with:
+          path: examples/safe-server
+          package: "."
+      - name: A vulnerable server must fail the gate
+        id: vulnerable
+        uses: ./
+        continue-on-error: true
+        with:
+          path: examples/vulnerable-server
+          package: "."
+          sarif-file: vulnerable.sarif
+      - name: Check the gate failed and SARIF was written
+        env:
+          OUTCOME: ${{ steps.vulnerable.outcome }}
+        run: |
+          test "$OUTCOME" = "failure" || { echo "the vulnerable example did not fail the gate ($OUTCOME)" >&2; exit 1; }
+          test -s vulnerable.sarif

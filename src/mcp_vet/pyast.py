@@ -21,6 +21,9 @@ SANITIZER = re.compile(r"(valid|sanit|safe|allow|normali[sz]e|secure|check|quote
 SUBPROC = {"run", "call", "check_call", "check_output", "Popen"}
 SUBPROC_SHELL_ALWAYS = {"getoutput", "getstatusoutput"}
 SHELL_PROGRAMS = {"sh", "bash", "zsh", "dash", "ksh", "cmd", "powershell", "pwsh"}
+# A fixed interpreter still runs whatever code or script it is handed: ["python", "-c", user_code].
+INTERPRETERS = SHELL_PROGRAMS | {"python", "python2", "python3", "node", "nodejs", "deno", "bun",
+                                 "ruby", "perl", "php"}
 EXEC_FUNCS = {"os.execv", "os.execve", "os.execvp", "os.execvpe", "os.execl", "os.execle",
               "os.execlp", "os.execlpe", "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
               "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe", "os.startfile"}
@@ -69,7 +72,27 @@ def is_tool_func(fn) -> bool:
                 and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str) \
                 and d.args[0].value.startswith("/"):
             return True
-    return False
+    # Servers that dispatch by name (`if tool_name == "execute_code": self.execute_code(...)`)
+    # register their tools in a schema; a function named after a registered tool handles it.
+    name = fn.name
+    base = name[1:] if name.startswith("_") else name
+    base = base[len("handle_"):] if base.startswith("handle_") else base
+    return name in _TOOL_NAMES or base in _TOOL_NAMES
+
+
+def _schema_tool_names(tree: ast.AST) -> Set[str]:
+    """Names from tool-schema dicts such as {"name": "read_file", "description": ..., "inputSchema": ...}."""
+    out: Set[str] = set()
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Dict):
+            continue
+        keys = {k.value: v for k, v in zip(n.keys, n.values)
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        label = keys.get("name")
+        if isinstance(label, ast.Constant) and isinstance(label.value, str) \
+                and keys.keys() & {"description", "inputSchema", "input_schema", "parameters", "schema"}:
+            out.add(label.value)
+    return out
 
 
 def is_constant_expr(node: Optional[ast.AST]) -> bool:
@@ -85,6 +108,8 @@ def is_constant_expr(node: Optional[ast.AST]) -> bool:
 
 # Module-level helpers whose return value does not carry their inputs (set per file by analyze()).
 _CLEAN_FUNCS: Set[str] = set()
+# Tool names found in schema dicts, so name-dispatched handlers are recognised (set per file).
+_TOOL_NAMES: Set[str] = set()
 
 
 def expr_tainted(node: ast.AST, tainted: Set[str]) -> bool:
@@ -166,6 +191,19 @@ def sql_built_names(fn, tainted: Set[str]) -> Set[str]:
             for t in targets:
                 out |= _targets(t)
     return out
+
+
+def _url_host_is_fixed(node: ast.AST) -> bool:
+    """f"https://api.example.org/v1/{x}" or "https://api.example.org/" + x: scheme and host are constant."""
+    head = None
+    if isinstance(node, ast.JoinedStr) and node.values and isinstance(node.values[0], ast.Constant):
+        head = node.values[0].value
+    else:
+        while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            node = node.left
+        if isinstance(node, ast.Constant):
+            head = node.value
+    return isinstance(head, str) and re.match(r"^https?://[^/?#]+[/?#]", head) is not None
 
 
 def is_path_like(node: ast.AST) -> bool:
@@ -326,7 +364,7 @@ class _Visitor(ast.NodeVisitor):
         # ---- MCP001: shell / dynamic code / program chosen by the caller ------------
         obfuscated = isinstance(node.func, ast.Attribute) and last in ("system", "popen") \
             and isinstance(node.func.value, ast.Call) and dotted(node.func.value.func) == "__import__"
-        shell_call = obfuscated or name in ("os.system", "os.popen") or \
+        shell_call = obfuscated or name in ("os.system", "os.popen") or last == "create_subprocess_shell" or \
             (name.startswith("subprocess.") and last in SUBPROC_SHELL_ALWAYS) or \
             (name.startswith("subprocess.") and last in SUBPROC and shell_kw is not None
              and not (isinstance(shell_kw.value, ast.Constant) and not shell_kw.value.value))
@@ -341,6 +379,9 @@ class _Visitor(ast.NodeVisitor):
         elif name.startswith("subprocess.") and last in SUBPROC and first is not None and \
                 self._program_from_input(first, tainted):
             self._add("MCP001", node, "HIGH", "A tool argument chooses the program to run.")
+        elif last == "create_subprocess_exec" and node.args and \
+                self._program_from_input(ast.List(elts=list(node.args), ctx=ast.Load()), tainted):
+            self._add("MCP001", node, "HIGH", "A tool argument is run as code or chooses the program.")
         elif name in EXEC_FUNCS and any_arg_tainted:
             self._add("MCP001", node, "HIGH", "A tool argument chooses the program to run.")
 
@@ -367,7 +408,10 @@ class _Visitor(ast.NodeVisitor):
             mod = name.rsplit(".", 1)[0] if "." in name else ""
             if mod in HTTP_MODULES or mod in self.http_clients:
                 if expr_tainted(first, tainted):
-                    self._add("MCP009", node, "MEDIUM", "A tool argument controls the URL.")
+                    if _url_host_is_fixed(first):
+                        self._add("MCP009", node, "LOW", "The host is fixed, so only the URL path or query is controlled.")
+                    else:
+                        self._add("MCP009", node, "MEDIUM", "A tool argument controls the URL.")
 
         # ---- MCP010: SQL built from caller input ------------------------------------
         if in_tool and last in SQL_METHODS and first is not None:
@@ -413,13 +457,16 @@ class _Visitor(ast.NodeVisitor):
             head = first.elts[0]
             if expr_tainted(head, tainted):
                 return True
-            # ["sh", "-c", user_text]: the program is fixed but it is a shell
+            # ["sh", "-c", user_text] or [sys.executable, "-c", user_code]: a fixed program that runs
+            # whatever it is handed
+            program = ""
             if isinstance(head, ast.Constant) and isinstance(head.value, str):
                 program = head.value.replace("\\", "/").rsplit("/", 1)[-1].lower()
                 if program.endswith(".exe"):
                     program = program[:-4]
-                return program in SHELL_PROGRAMS and any(expr_tainted(e, tainted) for e in first.elts[1:])
-            return False
+            elif dotted(head) == "sys.executable":
+                program = "python"
+            return program in INTERPRETERS and any(expr_tainted(e, tainted) for e in first.elts[1:])
         if isinstance(first, ast.Call):  # subprocess.run(x.split()) / shlex.split(x)
             if (isinstance(first.func, ast.Attribute) and first.func.attr == "split") \
                     or dotted(first.func) == "shlex.split":
@@ -468,8 +515,9 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
         return None
     lines = text.splitlines()
     clients = _http_clients(tree)
-    global _CLEAN_FUNCS
+    global _CLEAN_FUNCS, _TOOL_NAMES
     _CLEAN_FUNCS = set()
+    _TOOL_NAMES = _schema_tool_names(tree)
     helpers = [fn for fn in tree.body
                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and not is_tool_func(fn)]
     for _ in range(5):  # a helper that only calls clean helpers is clean too: iterate to a fixpoint
@@ -483,6 +531,7 @@ def analyze(rel: str, text: str) -> Optional[List[Finding]]:
         return v.findings
     finally:
         _CLEAN_FUNCS = set()
+        _TOOL_NAMES = set()
 
 
 def _returns_tainted(fn) -> bool:

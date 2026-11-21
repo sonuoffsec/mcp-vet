@@ -25,7 +25,7 @@ EXEC_ONLY = re.compile(r"(?<![\w.$])exec(Sync)?\s*\(")
 DYNAMIC_CODE = re.compile(r"(?<![\w.$])eval\(|new\s+Function\s*\(")
 SECRET_CONTEXT = re.compile(r"(example|placeholder|dummy|fake|redact|regex|pattern|allow)", re.IGNORECASE)
 NON_RUNTIME_DIRS = {"scripts", "script", ".github", "docs", "doc", "benchmarks", "benchmark", "ci"}
-DEMOTE_RULES = {"MCP001", "MCP002", "MCP004", "MCP005", "MCP009"}
+DEMOTE_RULES = {"MCP001", "MCP002", "MCP004", "MCP005", "MCP009", "MCP012"}
 COMMENT_RE = re.compile(r"\s*(//|/\*|\*|#)")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "e2e", "fixtures", "fixture",
              "__fixtures__", "testdata", "__mocks__", "mocks"}
@@ -181,6 +181,8 @@ def scan_text(rel: str, text: str, name: str, ctx: Optional[ProjectContext] = No
     if ast_findings is None:  # Python handled by pyast; JS/TS and unparsable files use regex
         file_level += checks.check_file_read(rel, text, ext, guard)
     file_level += checks.check_dependencies(rel, text, name) + checks.check_broad_scope(rel, text, ext)
+    file_level += checks.check_credentials(rel, text, ext, name) + checks.check_obfuscation(rel, text, ext)
+    file_level += checks.check_launch_config(rel, text, ext)
     for f in file_level:
         findings.append(f)
 

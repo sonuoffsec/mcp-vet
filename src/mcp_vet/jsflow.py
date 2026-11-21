@@ -54,7 +54,9 @@ FS_MODULES = {"fs", "node:fs", "fs/promises", "node:fs/promises", "fs-extra", "g
 # z.enum / z.number / z.string().uuid() ... constrain an input so it cannot carry a payload.
 SAFE_ZOD = {"enum", "nativeEnum", "literal", "number", "int", "boolean", "bigint", "date",
             "datetime", "uuid", "cuid", "regex", "ip"}
-SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "cmd", "powershell", "pwsh"}
+# A fixed interpreter still runs whatever code or script it is handed: spawn('node', ['-e', code]).
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "cmd", "powershell", "pwsh", "python", "python3",
+          "node", "nodejs", "deno", "bun", "ruby", "perl", "php"}
 CONTINUE_END = {"+", "-", "*", "/", "%", "=", "==", "===", "!=", "!==", "<", ">", "<=", ">=", "&&",
                 "||", "??", "?", ":", ".", "?.", ",", "(", "[", "{", "=>", "...", "!", "&", "|",
                 "^", "+=", "-=", "*=", "/=", "%="}
@@ -773,7 +775,13 @@ class Body:
                     (root in HTTP_ROOTS and name in ("get", "post", "put", "delete", "patch", "head",
                                                       "request", "fetch", "stream"))
                 if http and not self.guard_url and first_tainted and not first_const:
-                    self._add("MCP009", line, "MEDIUM", "A tool argument controls the URL.")
+                    head = T[first[0]] if first else None
+                    fixed_host = head is not None and head.kind in ("str", "tpl") \
+                        and re.match(r"^https?://[^/?#\s]+[/?#]", head.text) is not None
+                    if fixed_host:
+                        self._add("MCP009", line, "LOW", "The host is fixed, so only the URL path or query is controlled.")
+                    else:
+                        self._add("MCP009", line, "MEDIUM", "A tool argument controls the URL.")
                 # ---- MCP010 ----
                 sql = name in SQL_NAMES or (name in SQL_DB_NAMES and root in SQL_DB_ROOTS)
                 if sql and first is not None:

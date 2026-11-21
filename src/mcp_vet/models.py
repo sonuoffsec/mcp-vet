@@ -31,6 +31,8 @@ class ScanResult:
     findings: list
     elapsed: float = 0.0   # seconds the scan took
     started: str = ""      # local clock time the scan started, HH:MM:SS
+    baselined: int = 0     # findings hidden because a baseline already accepted them
+    config_source: str = ""  # the .mcp-vet.toml that was applied, if any
 
     def counts(self) -> dict:
         out = {s: 0 for s in SEVERITIES}

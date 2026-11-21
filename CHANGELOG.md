@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.0
+
+Driven by testing against other people's deliberately vulnerable MCP servers (Invariant Labs'
+experiments, the Damn Vulnerable MCP Server, the appsecco lab), and by making the tool easier to
+adopt.
+
+### Added
+- **`mcp-vet --clients`** finds the MCP client configs on your machine (Claude Desktop, Cursor,
+  VS Code, Windsurf, Claude Code) and scans them. Files are only read; nothing leaves the machine.
+- **`.mcp-vet.toml` config file:** `fail_on`, `min_severity`, `ignore`, `disable`, `include_tests`
+  and per-rule `[severity]` overrides. Command-line flags win. Typos are errors with a suggestion.
+- **Baselines:** `--write-baseline FILE` accepts today's findings and `--baseline FILE` reports only
+  new ones, matching on rule, file and code (not line number).
+- **GitHub Action** (`action.yml`): runs the scan, prints the report, writes SARIF, optionally uploads it
+  to code scanning. The repository's CI tests it against both example servers.
+- **MCP012** hardcoded credentials (secret-named literals that look generated, URLs with passwords,
+  bearer tokens, JWTs). **MCP013** obfuscated base64 string tables. **MCP014** unpinned `npx`/`uvx`
+  launchers in client configs.
+- Hidden instructions in HTML comments and `SYSTEM INSTRUCTION:` payloads (MCP002); hyphenated
+  `sk-...` style keys (MCP003).
+- Python: tools dispatched by name (a function named after a tool in a schema is treated as a tool
+  handler), `asyncio.create_subprocess_exec/shell`, and a fixed interpreter handed caller input
+  (`["python", "-c", code]`, `spawn("node", ["-e", code])`).
+- A fixed-host URL (`https://api.example.org/{id}`) is now LOW instead of MEDIUM for SSRF (MCP009):
+  only the path is controlled.
+- CONTRIBUTING guide, issue templates, `examples/README.md`.
+
+### Fixed
+- The credential rule first produced 284 false positives on 67 real repositories. It now looks for
+  generated-looking values and skips translations, lock files, CI and compose files, test tooling,
+  placeholders, labels, environment-variable names and comments (12 remain, reviewed by hand).
+
+### Changed
+- The vulnerable example's client config pins its package version so it still shows exactly the
+  findings the examples guide describes.
+
 ## 0.2.2
 
 ### Changed
