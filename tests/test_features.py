@@ -354,6 +354,25 @@ class ClientConfigs(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--clients", err)
 
+    def test_docker_and_podman_unpinned_images_are_flagged(self):
+        from mcp_vet.checks import check_launch_config
+        cfg = (
+            '{"mcpServers": {'
+            ' "unpinned": {"command": "docker", "args": ["run", "-i", "--rm", "mcp/postgres"]},'
+            ' "latest": {"command": "docker", "args": ["run", "-i", "--rm", "mcp/postgres:latest"]},'
+            ' "podman": {"command": "podman", "args": ["run", "-i", "--rm", "-e", "A=B", "--name", "srv", "mcp/fetch"]},'
+            ' "pinned": {"command": "docker", "args": ["run", "-i", "--rm", "-e", "A=B", "mcp/postgres:1.2.3"]},'
+            ' "digest": {"command": "docker", "args": ["run", "-i", "--rm", "mcp/postgres@sha256:abcd1234"]}'
+            '}}\n'
+        )
+        findings = check_launch_config("mcp.json", cfg, ".json")
+        rules = [f.rule_id for f in findings]
+        self.assertEqual(rules, ["MCP014", "MCP014", "MCP014"])
+        msgs = [f.message for f in findings]
+        self.assertTrue(any("`docker` runs `mcp/postgres` with no pinned tag." in m for m in msgs))
+        self.assertTrue(any("`docker` runs `mcp/postgres:latest` with no pinned tag." in m for m in msgs))
+        self.assertTrue(any("`podman` runs `mcp/fetch` with no pinned tag." in m for m in msgs))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -265,6 +265,30 @@ def check_obfuscation(file: str, text: str, ext: str) -> List[Finding]:
 
 # --------------------------------------------------------------------- client config launchers (MCP014)
 JS_RUNNERS = {"npx", "bunx", "pnpx"}
+DOCKER_RUNNERS = {"docker", "podman"}
+
+DOCKER_VALUED_FLAGS = {
+    "-e", "--env", "--env-file",
+    "-v", "--volume", "--mount",
+    "-p", "--publish", "--expose",
+    "-u", "--user",
+    "-w", "--workdir",
+    "--name",
+    "--network", "--net",
+    "--entrypoint",
+    "--restart",
+    "--platform",
+    "-h", "--hostname",
+    "-m", "--memory", "--cpus",
+    "-l", "--label",
+    "--add-host",
+    "--device",
+    "--log-driver",
+    "--security-opt",
+    "--cap-add", "--cap-drop",
+    "--pull",
+    "--ip", "--mac-address",
+}
 
 
 def _first_package_arg(args: List[str]) -> Optional[str]:
@@ -284,7 +308,30 @@ def _first_package_arg(args: List[str]) -> Optional[str]:
     return None
 
 
+def _first_docker_image(args: List[str]) -> Optional[str]:
+    """The container image in a docker/podman run command: the first non-flag argument after run."""
+    skip_next = False
+    for a in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if a.startswith("-"):
+            if "=" not in a and a in DOCKER_VALUED_FLAGS:
+                skip_next = True
+            continue
+        return a
+    return None
+
+
 def _spec_is_pinned(runner: str, spec: str) -> bool:
+    if runner in DOCKER_RUNNERS:
+        if "@" in spec:
+            return True
+        last = spec.split("/")[-1]
+        if ":" in last:
+            tag = last.split(":", 1)[1]
+            return bool(tag) and tag != "latest"
+        return False
     if runner in JS_RUNNERS or runner in ("pnpm", "yarn"):
         body = spec[1:] if spec.startswith("@") else spec  # "@scope/name@1.2.3"
         return "@" in body and not body.endswith("@latest") and not body.endswith("@*")
@@ -328,10 +375,15 @@ def check_launch_config(file: str, text: str, ext: str) -> List[Finding]:
             spec = _first_package_arg(args)
         elif runner == "pipx" and args[:1] == ["run"]:
             spec = _first_package_arg(args[1:])
+        elif runner in DOCKER_RUNNERS and args[:1] == ["run"]:
+            spec = _first_docker_image(args[1:])
         if not spec or _spec_is_pinned(runner, spec):
             continue
         idx = text.find(spec)
         line = _line_of(text, idx) if idx >= 0 else 1
+        msg = (f"`{runner}` runs `{spec}` with no pinned tag."
+               if runner in DOCKER_RUNNERS
+               else f"`{runner}` fetches `{spec}` with no version.")
         out.append(_finding("MCP014", file, line, f'"command": "{command}", "args": [... "{spec}" ...]',
-                            f"`{runner}` fetches `{spec}` with no version."))
+                            msg))
     return out
