@@ -12,7 +12,7 @@ Zero dependencies. One command. Works in CI.
 
 ![Terminal output of mcp-vet scanning a deliberately vulnerable MCP server: one critical, five high, two medium and three low findings](https://raw.githubusercontent.com/sonuoffsec/mcp-vet/main/assets/terminal.png)
 
-<sub>A stylised rendering of the report. The totals (11 findings: 1 critical, 5 high, 2 medium, 3 low) and the 11 rules come from a real run on `examples/vulnerable-server`; the scan time and clock time are illustrative. A real run always lists every critical and high finding, so it shows more rows than this image; `--limit 5` shortens the list for the weaker ones.</sub>
+<sub>A stylised rendering of the report. The totals (11 findings: 1 critical, 5 high, 2 medium, 3 low) and the 11 rules come from a real run on `examples/vulnerable-server`; the version number, scan time and clock time are illustrative. A real run always lists every critical and high finding, so it shows more rows than this image; `--limit 5` shortens the list for the weaker ones.</sub>
 
 ## Why
 

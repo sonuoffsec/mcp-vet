@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2
 
 ### Changed
 - **A redesigned terminal report.** The default text output now has a header, a summary of what
