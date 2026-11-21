@@ -59,15 +59,3 @@ jobs:
             echo "vulnerable example passed the gate, which means detection broke" >&2
             exit 1
           fi
-
-  terminal-image:
-    name: README terminal image matches real output
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python assets/build_terminal_svg.py
-      - name: Fail if assets/terminal.svg is stale
-        run: git diff --exit-code assets/terminal.svg

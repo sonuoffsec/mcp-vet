@@ -29,6 +29,8 @@ class ScanResult:
     root: str
     files_scanned: int
     findings: list
+    elapsed: float = 0.0   # seconds the scan took
+    started: str = ""      # local clock time the scan started, HH:MM:SS
 
     def counts(self) -> dict:
         out = {s: 0 for s in SEVERITIES}

@@ -24,7 +24,8 @@ publisher into a normal one.
 
 1. Update `__version__` in `src/mcp_vet/__init__.py` and `version` in `pyproject.toml`
    (they must match), and add an entry to `CHANGELOG.md`.
-2. Regenerate the README images if output changed: `python assets/build_terminal_svg.py --png`.
+2. If the report layout changed, update `assets/terminal.png` by hand so it still matches the tool's real
+   output (it is a designed image, not generated). The README caption says which parts are illustrative.
 3. Run the tests: `python -m unittest discover -s tests` and `python tests/test_recall.py`.
 4. Commit, push, and wait for CI to pass on `main`.
 5. Create the release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <notes>`

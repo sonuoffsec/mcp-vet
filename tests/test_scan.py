@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mcp_vet.cli import main  # noqa: E402
-from mcp_vet.report import as_json, as_sarif  # noqa: E402
+from mcp_vet.report import as_json, as_sarif, as_text  # noqa: E402
+from mcp_vet.rules import RULES  # noqa: E402
 from mcp_vet.scanner import scan, scan_text  # noqa: E402
 
 EXAMPLES = ROOT / "examples"
@@ -414,6 +415,115 @@ class WideSampleFalsePositives(unittest.TestCase):
             (Path(d) / "server.py").write_text(body)
             sev = {x.file: x.severity for x in scan(d).findings if x.rule_id == "MCP001"}
             self.assertEqual(sev, {"server.py": "HIGH", "scripts/dev.py": "MEDIUM"})
+
+
+class TextReport(unittest.TestCase):
+    """The default report follows the layout shown in the README image."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.result = scan(str(EXAMPLES / "vulnerable-server"))
+
+    def text(self, **kw):
+        kw.setdefault("target", "examples/vulnerable-server")
+        return as_text(self.result, **kw)
+
+    @staticmethod
+    def rows(text):
+        return [ln.strip() for ln in text.splitlines()
+                if ln.split()[:1] and ln.split()[0] in ("CRITICAL", "HIGH", "MEDIUM", "LOW")]
+
+    def test_has_every_section_of_the_documented_layout(self):
+        import re
+        t = self.text()
+        for needle in ("mcp-vet", "Findings summary", "Details", "Recommendation", "Scan finished",
+                       "Total findings: 11", "Critical 1", "High 5", "Medium 2", "Low 3"):
+            self.assertIn(needle, t)
+        self.assertRegex(t, r"Scanning target\s+: examples/vulnerable-server")
+        self.assertRegex(t, rf"Rules loaded\s+: {len(RULES)} checks")
+        self.assertRegex(t, r"Files scanned\s+: 4")
+        self.assertRegex(t, r"Scan completed in (<0\.01s|\d+\.\d\ds)")
+        self.assertRegex(t, r"Started at\s+: \d\d:\d\d:\d\d")
+
+    def test_no_colour_codes_unless_asked(self):
+        self.assertNotIn("\033[", self.text(color=False))
+        self.assertIn("\033[", self.text(color=True))
+
+    def test_critical_and_high_are_never_hidden_by_the_limit(self):
+        t = self.text(limit=1)
+        shown = self.rows(t)
+        self.assertEqual(sum(r.startswith(("CRITICAL", "HIGH")) for r in shown), 6)
+        self.assertIn("and 5 more findings", t)
+
+    def test_default_limit_lists_ten_and_counts_the_rest(self):
+        t = self.text()
+        self.assertEqual(len(self.rows(t)), 10)
+        self.assertIn("and 1 more finding (use --all", t)  # singular
+
+    def test_all_lists_every_finding(self):
+        t = self.text(limit=None)
+        self.assertEqual(len(self.rows(t)), 11)
+        self.assertNotIn("more finding", t)
+
+    def test_verbose_adds_code_and_fix_guidance_without_leaking_the_secret(self):
+        t = self.text(verbose=True)
+        self.assertIn("How to fix", t)
+        self.assertIn("Revoke the secret", t)
+        self.assertIn("AKIA***REDACTED***", t)
+        self.assertNotIn("AKIAIOSFODNN7EXAMPLE", t)
+        self.assertNotIn("How to fix", self.text())
+
+    def test_clean_scan_says_so_and_does_not_overclaim(self):
+        t = as_text(scan(str(EXAMPLES / "safe-server")), target="examples/safe-server")
+        self.assertIn("Total findings: 0", t)
+        self.assertIn("No findings", t)
+        self.assertIn("not a guarantee", t)
+        self.assertNotIn("Details", t)
+
+    def test_target_is_shown_as_typed_not_as_an_absolute_path(self):
+        self.assertNotIn(self.result.root, self.text())
+        self.assertIn(self.result.root, as_text(self.result))  # falls back when no target is given
+
+    def test_lines_stay_within_the_width(self):
+        self.assertLessEqual(max(len(ln) for ln in self.text(width=100).splitlines()), 100)
+
+    def test_long_paths_are_shortened_from_the_left(self):
+        deep = "a/" * 40 + "server.py"
+        result = scan_text(deep, "import os\n" + "def t(c):\n    os.system(c)\n", "server.py")
+        from mcp_vet.models import ScanResult
+        t = as_text(ScanResult("x", 1, result, 0.0, "00:00:00"), width=100)
+        self.assertIn("…", t)
+        self.assertLessEqual(max(len(ln) for ln in t.splitlines()), 100)
+
+
+class CliFlags(unittest.TestCase):
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = main(list(argv))
+        return code, buf.getvalue()
+
+    def test_limit_and_all_flags(self):
+        v = str(EXAMPLES / "vulnerable-server")
+        _, limited = self.run_cli(v, "--limit", "1", "--no-color")
+        _, everything = self.run_cli(v, "--all", "--no-color")
+        self.assertIn("more findings", limited)
+        self.assertNotIn("more finding", everything)
+
+    def test_verbose_flag_and_exit_code_are_unchanged(self):
+        code, out = self.run_cli(str(EXAMPLES / "vulnerable-server"), "-v", "--no-color")
+        self.assertEqual(code, 1)
+        self.assertIn("How to fix", out)
+
+    def test_no_colour_in_captured_output_even_with_NO_COLOR_unset(self):
+        _, out = self.run_cli(str(EXAMPLES / "safe-server"))
+        self.assertNotIn("\033[", out)  # captured, so not a terminal
+
+    def test_json_output_is_untouched_by_the_new_report(self):
+        _, out = self.run_cli(str(EXAMPLES / "safe-server"), "-f", "json")
+        self.assertEqual(json.loads(out)["summary"]["HIGH"], 0)
 
 
 class Cli(unittest.TestCase):

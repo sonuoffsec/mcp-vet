@@ -12,7 +12,7 @@ Zero dependencies. One command. Works in CI.
 
 ![Terminal output of mcp-vet scanning a deliberately vulnerable MCP server: one critical, five high, two medium and three low findings](https://raw.githubusercontent.com/sonuoffsec/mcp-vet/main/assets/terminal.png)
 
-<sub>The image above is generated from the scanner's real output by `assets/build_terminal_svg.py --png`.</sub>
+<sub>A stylised rendering of the report. The totals (11 findings: 1 critical, 5 high, 2 medium, 3 low) and the 11 rules come from a real run on `examples/vulnerable-server`; the scan time and clock time are illustrative. A real run always lists every critical and high finding, so it shows more rows than this image; `--limit 5` shortens the list for the weaker ones.</sub>
 
 ## Why
 
@@ -39,12 +39,17 @@ Or run it without installing: `PYTHONPATH=src python -m mcp_vet ./my-server`.
 ## Use
 
 ```bash
-mcp-vet ./my-server                      # human-readable report
-mcp-vet ./my-server -f json -o out.json  # machine-readable
+mcp-vet ./my-server                        # the report shown above
+mcp-vet ./my-server -v                     # also show the offending code and how to fix each rule
+mcp-vet ./my-server --all                  # list every finding (default: up to 10, never hiding critical or high)
+mcp-vet ./my-server --limit 5              # shorter list of the weaker findings
+mcp-vet ./my-server -f json -o out.json    # machine-readable
 mcp-vet ./my-server -f sarif -o out.sarif  # GitHub code scanning
-mcp-vet ./my-server --fail-on MEDIUM     # CI gate (default: HIGH)
+mcp-vet ./my-server --fail-on MEDIUM       # CI gate (default: HIGH)
 mcp-vet --list-rules
 ```
+
+The report is colourised on a terminal. Colour is off when the output is piped or written to a file, with `--no-color`, or when the `NO_COLOR` environment variable is set. JSON and SARIF output never change with these display options.
 
 Exit code is `1` when a finding at or above `--fail-on` exists, `2` on usage errors, otherwise `0`.
 
@@ -52,7 +57,7 @@ Exit code is `1` when a finding at or above `--fail-on` exists, `2` on usage err
 
 | ID | Severity | What it catches |
 |---|---|---|
-| MCP001 | HIGH / MEDIUM | Shell or dynamic code execution. **Python:** HIGH only when a tool argument reaches `shell=True`, `os.system`, `eval` or chooses the program; MEDIUM if the command is non-constant but not tool-controlled; constants are ignored. **JS/TS:** pattern-based |
+| MCP001 | HIGH / MEDIUM | Shell or dynamic code execution. **Python:** HIGH only when a tool argument reaches `shell=True`, `os.system`, `eval` or chooses the program; MEDIUM if the command is non-constant but not tool-controlled; constants are ignored. **JS/TS:** HIGH when a tool argument reaches `exec`, `eval`, `new Function` or a shell `spawn`; MEDIUM when a command is non-constant |
 | MCP002 | HIGH | Tool poisoning: instructions aimed at the model hidden in descriptions or code |
 | MCP003 | CRITICAL | Hardcoded secrets (AWS, GitHub, OpenAI/Anthropic-style keys, Slack, private keys). Output is redacted |
 | MCP004 | HIGH | HTTP/SSE transport with no authentication anywhere in the project, especially when bound to `0.0.0.0` |
@@ -129,7 +134,6 @@ All runs were static: the code was cloned and read, never executed.
 ```bash
 python -m unittest discover -s tests
 python -m mcp_vet src    # the scanner scans itself
-python assets/build_terminal_svg.py --png    # regenerate the terminal image above (needs Edge or Chrome)
 ```
 
 The `examples/` folder holds a deliberately vulnerable server and a clean one. Never deploy the vulnerable one.

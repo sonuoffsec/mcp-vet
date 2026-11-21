@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from . import __version__
 from .models import SEVERITIES, severity_rank
-from .report import as_json, as_sarif, as_text, rules_table
+from .report import DEFAULT_LIMIT, as_json, as_sarif, as_text, rules_table
 from .scanner import scan
 
 
@@ -19,6 +20,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="exit with code 1 if a finding at or above this severity exists (default HIGH)")
     p.add_argument("--min-severity", choices=SEVERITIES, default="INFO",
                    help="hide findings below this severity")
+    p.add_argument("-v", "--verbose", action="store_true",
+                   help="show the offending code for each finding and how to fix each rule")
+    p.add_argument("--limit", type=int, default=DEFAULT_LIMIT, metavar="N",
+                   help=f"list at most N findings in the text report (default {DEFAULT_LIMIT}); "
+                        "critical and high findings are always listed")
+    p.add_argument("--all", action="store_true", help="list every finding in the text report")
+    p.add_argument("--no-color", action="store_true", help="never use colour (also honours NO_COLOR)")
     p.add_argument("--include-tests", action="store_true",
                    help="also scan test files and test directories (skipped by default)")
     p.add_argument("--list-rules", action="store_true", help="print all rules and exit")
@@ -48,13 +56,17 @@ def main(argv=None) -> int:
     elif args.format == "sarif":
         text = as_sarif(result)
     else:
-        text = as_text(result, color=sys.stdout.isatty() and not args.output)
+        color = (sys.stdout.isatty() and not args.output and not args.no_color
+                 and "NO_COLOR" not in os.environ)
+        text = as_text(result, color=color, verbose=args.verbose, target=args.path,
+                       limit=None if args.all else args.limit)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             fh.write(text + "\n")
     else:
-        sys.stdout.reconfigure(encoding="utf-8")
+        if hasattr(sys.stdout, "reconfigure"):  # absent on captured or replaced streams
+            sys.stdout.reconfigure(encoding="utf-8")
         print(text)
 
     gate = severity_rank(args.fail_on)

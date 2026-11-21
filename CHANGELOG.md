@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **A redesigned terminal report.** The default text output now has a header, a summary of what
+  was scanned (target, rules loaded, files, start time, duration), a findings summary by severity,
+  a details table, a recommendation and a footer, matching the image in the README.
+  Critical and high findings are always listed; `--limit N` (default 10) caps only the weaker ones
+  and `--all` lists everything.
+- The target is printed as typed, not as an absolute path, so pasted output does not reveal your
+  directory layout.
+
+### Added
+- `-v` / `--verbose` shows the offending code for each finding and a "How to fix" section per rule.
+- `--limit N`, `--all` and `--no-color` (the `NO_COLOR` variable is honoured too).
+- New README banner and terminal images.
+
+### Fixed
+- The CLI no longer fails when its output stream cannot be reconfigured (captured or wrapped
+  stdout).
+- The README no longer describes JavaScript/TypeScript analysis as pattern-based.
+- JSON and SARIF output are unchanged.
+
 ## 0.2.1
 
 Precision fixes found by rescanning real servers. No new rules.

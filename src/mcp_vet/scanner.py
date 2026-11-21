@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -212,6 +213,7 @@ def _demote_if_not_runtime(f: Finding) -> Finding:
 
 
 def scan(path: str, include_tests: bool = False) -> ScanResult:
+    t0, started = time.perf_counter(), time.strftime("%H:%M:%S")
     root = Path(path).resolve()
     if not root.exists():
         raise FileNotFoundError(path)
@@ -235,4 +237,4 @@ def scan(path: str, include_tests: bool = False) -> ScanResult:
     unique = {(f.rule_id, f.file, f.line): f for f in findings}
     ordered = sorted(unique.values(),
                      key=lambda f: (-severity_rank(f.severity), f.file, f.line))
-    return ScanResult(str(root), count, ordered)
+    return ScanResult(str(root), count, ordered, time.perf_counter() - t0, started)
