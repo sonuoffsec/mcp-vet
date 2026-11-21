@@ -162,7 +162,7 @@ jobs:
           upload-sarif: true     # findings appear in the repository's Security tab
 ```
 
-The step prints the report in the log, fails the job at `fail-on`, and writes a SARIF file. Inputs: `path`, `fail-on`, `min-severity`, `package` (pin a version, for example `mcp-vet-scanner==0.3.0`), `sarif-file`, `upload-sarif`, `extra-args`. The repository's own CI runs this action against both example servers and requires the vulnerable one to fail.
+The step prints the report in the log, fails the job at `fail-on`, and writes a SARIF file. Inputs: `path`, `fail-on`, `min-severity`, `package` (pin a version, for example `mcp-vet-scanner==0.3.1`), `sarif-file`, `upload-sarif`, `extra-args`. The repository's own CI runs this action against both example servers and requires the vulnerable one to fail.
 
 ## How it works
 

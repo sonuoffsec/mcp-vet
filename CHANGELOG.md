@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
+
+Two contributions from @abhishekrajv7-cmd.
 
 ### Added
-- Read settings from `[tool.mcp-vet]` table in `pyproject.toml`, with `.mcp-vet.toml` taking precedence when both exist in the same directory.
+- Settings can be read from a `[tool.mcp-vet]` table in `pyproject.toml`; `.mcp-vet.toml` takes precedence when both exist in the same directory (#11).
+- MCP014 also flags `docker run` and `podman run` images with no pinned tag or digest, and `:latest` tags (#12).
 
 ## 0.3.0
 
