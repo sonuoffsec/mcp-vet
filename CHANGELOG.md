@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- A documentation page per rule under [docs/rules](docs/rules/index.md): what it detects, a vulnerable and a fixed example, the patterns it leaves alone and its limits. Each example is checked against the analyzer by `tests/test_rule_docs.py`.
+- SARIF output carries a `helpUri` for every rule, pointing at its page, so a code-scanning viewer can open the explanation next to a finding.
+
 ### Fixed
 - MCP012 no longer reports keys that are meant to be public (PostHog `phc_` project keys, Algolia search-only keys next to an application id and index) or example values in comments.
 - MCP008 ignores invisible characters used in comparisons and lookups (code that strips or tests for them).

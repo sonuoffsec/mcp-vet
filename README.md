@@ -116,6 +116,10 @@ A finding's identity is its rule, file and offending code, not its line number, 
 
 ## Rules
 
+Each rule has a page under [docs/rules](docs/rules/index.md) with what it detects, a
+vulnerable and a fixed example, the patterns it deliberately leaves alone and its known
+limits. The examples are checked against the analyzer by `tests/test_rule_docs.py`.
+
 | ID | Severity | What it catches |
 |---|---|---|
 | MCP001 | HIGH / MEDIUM | Shell or dynamic code execution. **Python:** HIGH only when a tool argument reaches `shell=True`, `os.system`, `eval` or chooses the program; MEDIUM if the command is non-constant but not tool-controlled; constants are ignored. **JS/TS:** HIGH when a tool argument reaches `exec`, `eval`, `new Function` or a shell `spawn`; MEDIUM when a command is non-constant |

@@ -134,6 +134,14 @@ def as_json(result: ScanResult) -> str:
     }, indent=2)
 
 
+DOCS_RULES_URL = "https://github.com/sonuoffsec/mcp-vet/blob/main/docs/rules"
+
+
+def docs_url(rule_id: str) -> str:
+    """The rule's documentation page, so a SARIF viewer can link to it."""
+    return f"{DOCS_RULES_URL}/{rule_id}.md"
+
+
 def as_sarif(result: ScanResult) -> str:
     level = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning",
              "LOW": "note", "INFO": "note"}
@@ -143,6 +151,7 @@ def as_sarif(result: ScanResult) -> str:
         "shortDescription": {"text": r.title},
         "fullDescription": {"text": r.message},
         "help": {"text": r.remediation},
+        "helpUri": docs_url(r.id),
         "defaultConfiguration": {"level": level[r.severity]},
     } for r in RULES.values()]
     results = [{
