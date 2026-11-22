@@ -27,9 +27,11 @@ def candidate_paths(home: Optional[Path] = None, env: Optional[Mapping[str, str]
         home / ".cursor" / "mcp.json",                                # Cursor (user)
         home / ".codeium" / "windsurf" / "mcp_config.json",           # Windsurf
         home / ".claude.json",                                        # Claude Code (user)
+        home / ".cline" / "data" / "settings" / "cline_mcp_settings.json",  # Cline (shared default)
         cwd / ".vscode" / "mcp.json",                                 # VS Code (project)
         cwd / ".cursor" / "mcp.json",                                 # Cursor (project)
         cwd / ".mcp.json",                                            # Claude Code (project)
+        cwd / ".roo" / "mcp.json",                                    # Roo Code (project)
     ]
     return out
 

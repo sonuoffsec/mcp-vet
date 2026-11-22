@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="?", help="directory or file to scan")
     p.add_argument("--clients", action="store_true",
                    help="scan the MCP client configs found on this machine (Claude Desktop, Cursor, "
-                        "VS Code, Windsurf, Claude Code); files are only read, nothing is sent anywhere")
+                        "VS Code, Windsurf, Claude Code, Cline shared default, Roo Code project); "
+                        "files are only read, nothing is sent anywhere")
     p.add_argument("-f", "--format", choices=["text", "json", "sarif"], default="text")
     p.add_argument("-o", "--output", help="write the report to a file")
     p.add_argument("--fail-on", choices=SEVERITIES, default=None,
@@ -86,7 +87,7 @@ def main(argv=None) -> int:
             found = clients.existing_configs()
             if not found:
                 print("No MCP client configuration was found. Looked for Claude Desktop, VS Code, "
-                      "Cursor, Windsurf and Claude Code configs.\n"
+                      "Cursor, Windsurf, Claude Code, Cline shared default and Roo Code project configs.\n"
                       "Pass a file or folder instead: mcp-vet <path>")
                 return 0
             result = _scan_clients(found, include_tests)

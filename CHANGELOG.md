@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `--clients` also discovers Cline's shared default MCP configuration and Roo Code's project `.roo/mcp.json` configuration (#1).
+
 ### Fixed
 - MCP012 no longer reports keys that are meant to be public (PostHog `phc_` project keys, Algolia search-only keys next to an application id and index) or example values in comments.
 - MCP008 ignores invisible characters used in comparisons and lookups (code that strips or tests for them).

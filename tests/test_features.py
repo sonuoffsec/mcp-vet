@@ -315,6 +315,82 @@ class ClientConfigs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(clients.existing_configs(home=Path(d), env={}, cwd=Path(d)), [])
 
+    def test_cline_default_and_roo_project_configs_are_found(self):
+        for layout in ("windows", "macos", "linux", "linux-xdg"):
+            for names in (("cline",), ("roo",), ("cline", "roo")):
+                with self.subTest(layout=layout, clients=names), tempfile.TemporaryDirectory() as d:
+                    home = Path(d) / "home"
+                    cwd = home / "project"
+                    paths = {
+                        "cline": home / ".cline" / "data" / "settings" / "cline_mcp_settings.json",
+                        "roo": cwd / ".roo" / "mcp.json",
+                    }
+                    env = {}
+                    if layout == "windows":
+                        env["APPDATA"] = str(home / "AppData" / "Roaming")
+                    elif layout == "linux-xdg":
+                        env["XDG_CONFIG_HOME"] = str(home / "custom-config")
+                    expected = [paths[name] for name in names]
+                    for path in expected:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text(self.CONFIG, encoding="utf-8")
+                    self.assertCountEqual(clients.existing_configs(home=home, env=env, cwd=cwd), expected)
+
+    def test_new_client_config_directories_are_not_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            cwd = home / "project"
+            (home / ".cline" / "data" / "settings" / "cline_mcp_settings.json").mkdir(parents=True)
+            (cwd / ".roo" / "mcp.json").mkdir(parents=True)
+            self.assertEqual(clients.existing_configs(home=home, env={}, cwd=cwd), [])
+
+    def test_client_configs_are_deduplicated_with_overlapping_bases(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            cwd = home / "project"
+            shared = home / "Library" / "Application Support"
+            paths = [
+                shared / "Code" / "User" / "mcp.json",
+                home / ".cline" / "data" / "settings" / "cline_mcp_settings.json",
+                cwd / ".roo" / "mcp.json",
+            ]
+            for path in paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(self.CONFIG, encoding="utf-8")
+            env = {"APPDATA": str(shared), "XDG_CONFIG_HOME": str(shared)}
+            self.assertCountEqual(clients.existing_configs(home=home, env=env, cwd=cwd), paths)
+
+    def test_clients_flag_discovers_and_scans_cline_and_roo_configs(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            cwd = home / "project"
+            paths = {
+                home / ".cline" / "data" / "settings" / "cline_mcp_settings.json": "cline-server",
+                cwd / ".roo" / "mcp.json": "roo-server",
+            }
+            for path, package in paths.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps({"mcpServers": {
+                    "unpinned": {"command": "npx", "args": [package]},
+                    "pinned": {"command": "npx", "args": [package + "@1.2.3"]},
+                }}), encoding="utf-8")
+            before = {path: path.read_bytes() for path in paths}
+            with mock.patch("mcp_vet.clients.Path.home", return_value=home), \
+                    mock.patch("mcp_vet.clients.Path.cwd", return_value=cwd), \
+                    mock.patch.dict("os.environ", {}, clear=True):
+                code, out, err = run("--clients", "--no-color", "-f", "json", "--fail-on", "INFO")
+            self.assertEqual(code, 1)
+            self.assertEqual(err, "")
+            findings = [f for f in json.loads(out)["findings"] if f["rule_id"] == "MCP014"]
+            self.assertEqual(len(findings), 2)
+            self.assertEqual({f["file"] for f in findings}, {
+                "~/.cline/data/settings/cline_mcp_settings.json", "~/project/.roo/mcp.json",
+            })
+            self.assertTrue(any("`cline-server`" in f["message"] for f in findings))
+            self.assertTrue(any("`roo-server`" in f["message"] for f in findings))
+            self.assertNotIn(home.as_posix(), out.replace("\\\\", "/"))
+            self.assertEqual({path: path.read_bytes() for path in paths}, before)
+
     def test_project_level_configs_are_found_in_the_working_folder(self):
         with tempfile.TemporaryDirectory() as d:
             cwd = Path(d)
