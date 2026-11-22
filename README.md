@@ -68,6 +68,12 @@ Claude Desktop, Cursor, VS Code, Windsurf and Claude Code each keep a config fil
 mcp-vet --clients
 ```
 
+It also finds [Cline's shared default configuration](https://docs.cline.bot/getting-started/config)
+at `~/.cline/data/settings/cline_mcp_settings.json` and
+[Roo Code's project configuration](https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo/)
+at `.roo/mcp.json` in the current working directory. Custom Cline locations and Roo Code's global
+configuration are not automatically discovered; pass those files directly with `mcp-vet <path>`.
+
 It only **reads** those files and prints findings (secrets are masked, and your home folder is shown as `~`); nothing is sent anywhere. It flags servers launched with no version (`npx -y some-package` downloads and runs whatever is newest every time the client starts), filesystem servers given your whole disk, and credentials written into the config. You can also point it at one file: `mcp-vet ~/.cursor/mcp.json`.
 
 ### Configure it
